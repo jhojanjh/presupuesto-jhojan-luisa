@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   DollarSign,
   Users,
@@ -22,7 +22,7 @@ import {
 
 const API_URL = 'https://budget-api-dt5y.onrender.com/api/budget/main';
 
-// ======= GASTOS INICIALES (fallback si el backend está vacío) =======
+// ======= GASTOS INICIALES =======
 const GASTOS_INICIALES = [
   { id: 1, nombre: 'Arriendo', categoria: 'Arriendo', monto: 720000, mes: 'Diciembre', pagado: false, recurrente: true },
   { id: 2, nombre: 'Arriendo', categoria: 'Arriendo', monto: 720000, mes: 'Enero', pagado: false, recurrente: true },
@@ -72,7 +72,6 @@ const BudgetTracker = () => {
     mes: 'Diciembre'
   });
 
-  // estado para crear gastos
   const [nuevoGasto, setNuevoGasto] = useState({
     nombre: '',
     monto: '',
@@ -81,20 +80,18 @@ const BudgetTracker = () => {
     recurrente: true
   });
 
-  // modal para agregar gasto
   const [mostrarModalGasto, setMostrarModalGasto] = useState(false);
-
   const [mensajeExito, setMensajeExito] = useState('');
   const [editandoGasto, setEditandoGasto] = useState(null);
   const [gastoEditado, setGastoEditado] = useState({});
-
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
-  const [pendienteGuardado, setPendienteGuardado] = useState(false);
   const [error, setError] = useState(null);
-
-  // modo oscuro / claro
   const [modoOscuro, setModoOscuro] = useState(true);
+
+  // 🔴 REFS PARA EVITAR RACE CONDITIONS
+  const datosGuardadosRef = useRef({ gastos: [], aportes: [] });
+  const timeoutRef = useRef(null);
 
   useEffect(() => {
     if (modoOscuro) {
@@ -117,14 +114,25 @@ const BudgetTracker = () => {
         const data = await res.json();
 
         const gastosServidor = Array.isArray(data.gastos) ? data.gastos : [];
-        // si el backend viene vacío, usamos los iniciales
-        setGastos(gastosServidor.length > 0 ? gastosServidor : GASTOS_INICIALES);
+        const gastosFinales = gastosServidor.length > 0 ? gastosServidor : GASTOS_INICIALES;
+        
+        setGastos(gastosFinales);
         setAportes(data.aportes || []);
+        
+        // 🔴 ACTUALIZAR REFS CON LOS DATOS INICIALES
+        datosGuardadosRef.current = {
+          gastos: gastosFinales,
+          aportes: data.aportes || []
+        };
+
       } catch (err) {
         console.error(err);
         setError('No se pudieron cargar los datos del servidor.');
-        // si falla el backend, al menos mostramos los gastos iniciales
         setGastos(GASTOS_INICIALES);
+        datosGuardadosRef.current = {
+          gastos: GASTOS_INICIALES,
+          aportes: []
+        };
       } finally {
         setCargando(false);
       }
@@ -133,41 +141,69 @@ const BudgetTracker = () => {
     fetchBudget();
   }, []);
 
-  // ================== GUARDADO AUTOMÁTICO MEJORADO ==================
+  // ================== GUARDADO AUTOMÁTICO SIMPLIFICADO ==================
   useEffect(() => {
-    if (cargando || guardando) {
-      setPendienteGuardado(true);
+    // 🔴 SOLO GUARDAR SI HAY CAMBIOS REALES
+    const hayCambiosEnGastos = JSON.stringify(gastos) !== JSON.stringify(datosGuardadosRef.current.gastos);
+    const hayCambiosEnAportes = JSON.stringify(aportes) !== JSON.stringify(datosGuardadosRef.current.aportes);
+
+    if (!hayCambiosEnGastos && !hayCambiosEnAportes) {
       return;
     }
 
-    const timeout = setTimeout(async () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    timeoutRef.current = setTimeout(async () => {
       try {
         setGuardando(true);
+        
+        const datosAGuardar = {
+          gastos: gastos.map(g => ({
+            ...g,
+            // 🔴 ASEGURAR QUE pagado SEA BOOLEANO
+            pagado: Boolean(g.pagado)
+          })),
+          aportes: aportes.map(a => ({
+            ...a,
+            monto: Number(a.monto)
+          })),
+          ultimaActualizacion: new Date().toISOString()
+        };
+
         const response = await fetch(API_URL, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            gastos, 
-            aportes,
-            ultimaActualizacion: new Date().toISOString()
-          })
+          body: JSON.stringify(datosAGuardar)
         });
 
         if (!response.ok) throw new Error('Error en servidor');
         
-        setPendienteGuardado(false);
+        // 🔴 ACTUALIZAR REFS CON LOS DATOS GUARDADOS
+        datosGuardadosRef.current = {
+          gastos: [...gastos],
+          aportes: [...aportes]
+        };
+
+        console.log('✅ Datos guardados correctamente');
+        
       } catch (err) {
-        console.error('Error guardando:', err);
+        console.error('❌ Error guardando:', err);
         setError('No se pudieron guardar los cambios en el servidor');
       } finally {
         setGuardando(false);
       }
-    }, 1000);
+    }, 1500); // Aumentar debounce para evitar guardados muy seguidos
 
-    return () => clearTimeout(timeout);
-  }, [gastos, aportes, cargando, guardando, pendienteGuardado]);
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [gastos, aportes]);
 
-  // ================== MANEJO DE ERRORES MEJORADO ==================
+  // ================== MANEJO DE ERRORES ==================
   useEffect(() => {
     if (error) {
       const timer = setTimeout(() => setError(null), 5000);
@@ -175,16 +211,11 @@ const BudgetTracker = () => {
     }
   }, [error]);
 
-  // ================== RESET DE FILTROS AL CAMBIAR VISTA ==================
-  useEffect(() => {
-    setMesSeleccionado('Todos');
-  }, [vistaActual]);
-
   // ================== CÁLCULOS ==================
   const calculos = useMemo(() => {
     const totalGastos = gastos.reduce((sum, g) => sum + g.monto, 0);
     const gastosPagados = gastos
-      .filter((g) => g.pagado)
+      .filter((g) => g.pagado === true) // 🔴 FORZAR BOOLEANO
       .reduce((sum, g) => sum + g.monto, 0);
 
     const totalAportes = aportes.reduce((sum, a) => sum + a.monto, 0);
@@ -230,10 +261,15 @@ const BudgetTracker = () => {
     setTimeout(() => setMensajeExito(''), 3000);
   };
 
-  // ================== GASTOS - FUNCIONES MEJORADAS ==================
+  // ================== GASTOS - FUNCIONES CORREGIDAS ==================
   const togglePago = useCallback((id) => {
     setGastos((prev) =>
-      prev.map((g) => (g.id === id ? { ...g, pagado: !g.pagado } : g))
+      prev.map((g) => 
+        g.id === id ? { 
+          ...g, 
+          pagado: !g.pagado // 🔴 TOGGLE SIMPLE
+        } : g
+      )
     );
   }, []);
 
@@ -246,7 +282,11 @@ const BudgetTracker = () => {
 
   const iniciarEdicion = (gasto) => {
     setEditandoGasto(gasto.id);
-    setGastoEditado({ ...gasto });
+    setGastoEditado({ 
+      ...gasto,
+      // 🔴 ASEGURAR TIPOS CORRECTOS EN EDICIÓN
+      monto: gasto.monto.toString()
+    });
   };
 
   const cancelarEdicion = () => {
@@ -273,7 +313,8 @@ const BudgetTracker = () => {
           ? { 
               ...gastoEditado, 
               monto,
-              fechaActualizacion: new Date().toISOString()
+              // 🔴 MANTENER EL ESTADO PAGADO ORIGINAL
+              pagado: Boolean(gastoEditado.pagado)
             }
           : g
       )
@@ -286,20 +327,21 @@ const BudgetTracker = () => {
   };
 
   const handleEditChange = (field, value) => {
-    setGastoEditado((prev) => ({ ...prev, [field]: value }));
+    setGastoEditado((prev) => ({ 
+      ...prev, 
+      [field]: field === 'pagado' ? Boolean(value) : value 
+    }));
   };
 
-  // crear gasto - CORREGIDO
-  const agregarGasto = useCallback(() => {
-    setError(null);
-    
+  // CREAR GASTO - CORREGIDO
+  const agregarGasto = () => {
     const monto = parseFloat(nuevoGasto.monto);
     if (!nuevoGasto.nombre.trim()) {
-      setError('Por favor escribe un nombre para el gasto');
+      alert('Por favor escribe un nombre para el gasto');
       return;
     }
-    if (isNaN(monto) || monto <= 0) {
-      setError('Ingresa un monto válido mayor a 0');
+    if (!monto || monto <= 0) {
+      alert('Ingresa un monto válido mayor a 0');
       return;
     }
 
@@ -310,7 +352,7 @@ const BudgetTracker = () => {
       categoria: nuevoGasto.categoria,
       mes: nuevoGasto.mes,
       recurrente: nuevoGasto.recurrente,
-      pagado: false, // ✅ SIEMPRE false al crear
+      pagado: false, // 🔴 SIEMPRE FALSE AL CREAR
       fechaCreacion: new Date().toISOString()
     };
 
@@ -324,7 +366,7 @@ const BudgetTracker = () => {
     });
     setMostrarModalGasto(false);
     mostrarExito('✅ Gasto agregado');
-  }, [nuevoGasto]);
+  };
 
   // ================== APORTES ==================
   const agregarAporte = () => {
@@ -365,6 +407,7 @@ const BudgetTracker = () => {
     ) {
       setGastos([]);
       setAportes([]);
+      datosGuardadosRef.current = { gastos: [], aportes: [] };
       mostrarExito('🧹 Todos los datos fueron limpiados');
     }
   };
@@ -418,7 +461,7 @@ const BudgetTracker = () => {
       ? ((calculos.gastosPagados / calculos.totalGastos) * 100).toFixed(1)
       : null;
 
-  // ================== RENDER ITEM DE GASTO MEJORADO ==================
+  // ================== RENDER ITEM DE GASTO ==================
   const renderExpenseItem = (gasto) => {
     const isEditing = editandoGasto === gasto.id;
     
@@ -518,7 +561,7 @@ const BudgetTracker = () => {
             {formatMoney(gasto.monto)}
           </span>
 
-          {/* ✅ BOTÓN TOGGLE CORREGIDO */}
+          {/* BOTÓN TOGGLE - ESTADO CLARO */}
           <button
             className={gasto.pagado ? 'btn-mark-unpaid' : 'btn-mark-paid'}
             onClick={() => togglePago(gasto.id)}
@@ -577,7 +620,7 @@ const BudgetTracker = () => {
 
   return (
     <div className={`app-container ${modoOscuro ? 'theme-dark' : 'theme-light'}`}>
-      {/* HEADER MEJORADO */}
+      {/* HEADER */}
       <div className="header">
         <div
           className="header-top-row"
@@ -596,9 +639,6 @@ const BudgetTracker = () => {
           <div className="header-status" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             {guardando && (
               <span className="saving-indicator" style={{ color: '#f59e0b' }}>💾 Guardando...</span>
-            )}
-            {pendienteGuardado && (
-              <span className="pending-indicator" style={{ color: '#6b7280' }}>⏳ Cambios pendientes...</span>
             )}
             
             <button
@@ -621,7 +661,7 @@ const BudgetTracker = () => {
           </div>
         </div>
 
-        {/* NOTIFICACIONES MEJORADAS */}
+        {/* NOTIFICACIONES */}
         <div className="notifications">
           {mensajeExito && <div className="message-success fade-in">✅ {mensajeExito}</div>}
           {error && (
@@ -876,7 +916,7 @@ const BudgetTracker = () => {
             </div>
           </div>
 
-          {/* LISTA DE GASTOS CORREGIDA */}
+          {/* LISTA DE GASTOS */}
           <div className="expense-list">
             {gastosFiltrados.map((gasto) => (
               <div
