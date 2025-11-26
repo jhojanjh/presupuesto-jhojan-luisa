@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   DollarSign,
   Users,
@@ -54,6 +54,11 @@ const GASTOS_INICIALES = [
   { id: 28, nombre: 'Moto - Otros', categoria: 'Moto', monto: 250000, mes: 'Diciembre', pagado: false, unico: true }
 ];
 
+// Utilidad para IDs únicos
+const generarIdUnico = () => {
+  return crypto.randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+};
+
 const BudgetTracker = () => {
   const [gastos, setGastos] = useState([]);
   const [aportes, setAportes] = useState([]);
@@ -85,6 +90,7 @@ const BudgetTracker = () => {
 
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
+  const [pendienteGuardado, setPendienteGuardado] = useState(false);
   const [error, setError] = useState(null);
 
   // modo oscuro / claro
@@ -127,28 +133,52 @@ const BudgetTracker = () => {
     fetchBudget();
   }, []);
 
-  // ================== GUARDAR AUTOMÁTICO (PUT) ==================
+  // ================== GUARDADO AUTOMÁTICO MEJORADO ==================
   useEffect(() => {
-    if (cargando) return; // No guardes mientras está cargando
+    if (cargando || guardando) {
+      setPendienteGuardado(true);
+      return;
+    }
 
     const timeout = setTimeout(async () => {
       try {
         setGuardando(true);
-        await fetch(API_URL, {
+        const response = await fetch(API_URL, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gastos, aportes })
+          body: JSON.stringify({ 
+            gastos, 
+            aportes,
+            ultimaActualizacion: new Date().toISOString()
+          })
         });
+
+        if (!response.ok) throw new Error('Error en servidor');
+        
+        setPendienteGuardado(false);
       } catch (err) {
-        console.error(err);
-        setError('No se pudieron guardar los cambios en el servidor.');
+        console.error('Error guardando:', err);
+        setError('No se pudieron guardar los cambios en el servidor');
       } finally {
         setGuardando(false);
       }
-    }, 800); // debounce
+    }, 1000);
 
     return () => clearTimeout(timeout);
-  }, [gastos, aportes, cargando]);
+  }, [gastos, aportes, cargando, guardando, pendienteGuardado]);
+
+  // ================== MANEJO DE ERRORES MEJORADO ==================
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
+  // ================== RESET DE FILTROS AL CAMBIAR VISTA ==================
+  useEffect(() => {
+    setMesSeleccionado('Todos');
+  }, [vistaActual]);
 
   // ================== CÁLCULOS ==================
   const calculos = useMemo(() => {
@@ -200,19 +230,19 @@ const BudgetTracker = () => {
     setTimeout(() => setMensajeExito(''), 3000);
   };
 
-  // ================== GASTOS ==================
-  const togglePago = (id) => {
+  // ================== GASTOS - FUNCIONES MEJORADAS ==================
+  const togglePago = useCallback((id) => {
     setGastos((prev) =>
       prev.map((g) => (g.id === id ? { ...g, pagado: !g.pagado } : g))
     );
-  };
+  }, []);
 
-  const eliminarGasto = (id) => {
+  const eliminarGasto = useCallback((id) => {
     if (window.confirm('¿Seguro que quieres eliminar este gasto?')) {
       setGastos((prev) => prev.filter((g) => g.id !== id));
       mostrarExito('🗑️ Gasto eliminado');
     }
-  };
+  }, []);
 
   const iniciarEdicion = (gasto) => {
     setEditandoGasto(gasto.id);
@@ -225,21 +255,33 @@ const BudgetTracker = () => {
   };
 
   const guardarEdicion = () => {
-    if (!gastoEditado.nombre || !gastoEditado.monto) {
-      alert('Completa todos los campos del gasto');
+    const monto = parseFloat(gastoEditado.monto);
+    
+    if (!gastoEditado.nombre?.trim()) {
+      setError('El nombre del gasto es requerido');
+      return;
+    }
+    
+    if (isNaN(monto) || monto <= 0) {
+      setError('El monto debe ser un número mayor a 0');
       return;
     }
 
     setGastos((prev) =>
       prev.map((g) =>
         g.id === editandoGasto
-          ? { ...gastoEditado, monto: parseFloat(gastoEditado.monto) }
+          ? { 
+              ...gastoEditado, 
+              monto,
+              fechaActualizacion: new Date().toISOString()
+            }
           : g
       )
     );
 
     setEditandoGasto(null);
     setGastoEditado({});
+    setError(null);
     mostrarExito('✅ Gasto actualizado');
   };
 
@@ -247,29 +289,32 @@ const BudgetTracker = () => {
     setGastoEditado((prev) => ({ ...prev, [field]: value }));
   };
 
-  // crear gasto
-  const agregarGasto = () => {
+  // crear gasto - CORREGIDO
+  const agregarGasto = useCallback(() => {
+    setError(null);
+    
     const monto = parseFloat(nuevoGasto.monto);
     if (!nuevoGasto.nombre.trim()) {
-      alert('Por favor escribe un nombre para el gasto');
+      setError('Por favor escribe un nombre para el gasto');
       return;
     }
-    if (!monto || monto <= 0) {
-      alert('Ingresa un monto válido mayor a 0');
+    if (isNaN(monto) || monto <= 0) {
+      setError('Ingresa un monto válido mayor a 0');
       return;
     }
 
     const nuevo = {
-      id: Date.now(),
+      id: generarIdUnico(),
       nombre: nuevoGasto.nombre.trim(),
       monto,
       categoria: nuevoGasto.categoria,
       mes: nuevoGasto.mes,
       recurrente: nuevoGasto.recurrente,
-      pagado: false
+      pagado: false, // ✅ SIEMPRE false al crear
+      fechaCreacion: new Date().toISOString()
     };
 
-    setGastos((prev) => [nuevo, ...prev]); // aparece arriba
+    setGastos((prev) => [nuevo, ...prev]);
     setNuevoGasto({
       nombre: '',
       monto: '',
@@ -279,7 +324,7 @@ const BudgetTracker = () => {
     });
     setMostrarModalGasto(false);
     mostrarExito('✅ Gasto agregado');
-  };
+  }, [nuevoGasto]);
 
   // ================== APORTES ==================
   const agregarAporte = () => {
@@ -292,10 +337,11 @@ const BudgetTracker = () => {
     setAportes((prev) => [
       ...prev,
       {
-        id: Date.now(),
+        id: generarIdUnico(),
         persona: nuevoAporte.persona,
         monto,
-        mes: nuevoAporte.mes
+        mes: nuevoAporte.mes,
+        fechaCreacion: new Date().toISOString()
       }
     ]);
 
@@ -353,7 +399,6 @@ const BudgetTracker = () => {
     Servicios: <Wifi size={18} />,
     Transporte: <Car size={18} />,
     Tarjetas: <CreditCard size={18} />
-    // Mercado y Moto pueden quedar sin icono
   };
 
   const categoriaColors = {
@@ -373,6 +418,154 @@ const BudgetTracker = () => {
       ? ((calculos.gastosPagados / calculos.totalGastos) * 100).toFixed(1)
       : null;
 
+  // ================== RENDER ITEM DE GASTO MEJORADO ==================
+  const renderExpenseItem = (gasto) => {
+    const isEditing = editandoGasto === gasto.id;
+    
+    if (isEditing) {
+      return (
+        <div style={{ width: '100%' }}>
+          <div className="edit-form-grid">
+            <div>
+              <label className="edit-form-label">Nombre</label>
+              <input
+                className="form-input"
+                type="text"
+                value={gastoEditado.nombre || ''}
+                onChange={(e) =>
+                  handleEditChange('nombre', e.target.value)
+                }
+              />
+            </div>
+            <div>
+              <label className="edit-form-label">Monto</label>
+              <input
+                className="form-input"
+                type="number"
+                value={gastoEditado.monto || ''}
+                onChange={(e) =>
+                  handleEditChange('monto', e.target.value)
+                }
+              />
+            </div>
+            <div>
+              <label className="edit-form-label">Categoría</label>
+              <select
+                className="form-input"
+                value={gastoEditado.categoria || ''}
+                onChange={(e) =>
+                  handleEditChange('categoria', e.target.value)
+                }
+              >
+                {categorias.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="edit-form-label">Mes</label>
+              <select
+                className="form-input"
+                value={gastoEditado.mes || ''}
+                onChange={(e) =>
+                  handleEditChange('mes', e.target.value)
+                }
+              >
+                {meses.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button className="btn-add" onClick={guardarEdicion}>
+              <Save size={14} />
+              Guardar
+            </button>
+            <button className="btn-cancel" onClick={cancelarEdicion}>
+              <X size={14} />
+              Cancelar
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <>
+        <div className="expense-info">
+          <div className={`expense-category ${categoriaColors[gasto.categoria] || 'blue'}`} />
+          <div className="expense-details">
+            <h4>{gasto.nombre}</h4>
+            <div className="expense-meta">
+              <span>{gasto.categoria}</span>
+              <span>•</span>
+              <span>{gasto.mes}</span>
+              {gasto.recurrente && (
+                <span className="expense-recurrent">
+                  🔄 Recurrente
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="expense-actions">
+          <span className="expense-amount">
+            {formatMoney(gasto.monto)}
+          </span>
+
+          {/* ✅ BOTÓN TOGGLE CORREGIDO */}
+          <button
+            className={gasto.pagado ? 'btn-mark-unpaid' : 'btn-mark-paid'}
+            onClick={() => togglePago(gasto.id)}
+            style={{
+              backgroundColor: gasto.pagado ? '#ef4444' : '#10b981',
+              color: 'white',
+              border: 'none',
+              padding: '8px 12px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            {gasto.pagado ? (
+              <>
+                <X size={14} />
+                No pagado
+              </>
+            ) : (
+              <>
+                <Check size={14} />
+                Pagado
+              </>
+            )}
+          </button>
+
+          <button
+            className="btn-edit"
+            onClick={() => iniciarEdicion(gasto)}
+          >
+            <Edit size={14} />
+          </button>
+
+          <button
+            className="btn-delete"
+            onClick={() => eliminarGasto(gasto.id)}
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      </>
+    );
+  };
+
   // ================== LOADING ==================
   if (cargando) {
     return (
@@ -384,7 +577,7 @@ const BudgetTracker = () => {
 
   return (
     <div className={`app-container ${modoOscuro ? 'theme-dark' : 'theme-light'}`}>
-      {/* HEADER */}
+      {/* HEADER MEJORADO */}
       <div className="header">
         <div
           className="header-top-row"
@@ -400,17 +593,58 @@ const BudgetTracker = () => {
             <p className="header-subtitle">Diciembre 2024 - Febrero 2025</p>
           </div>
 
-          <button
-            className="theme-toggle"
-            onClick={() => setModoOscuro((prev) => !prev)}
-          >
-            {modoOscuro ? <Sun size={16} /> : <Moon size={16} />}
-            <span>{modoOscuro ? 'Modo claro' : 'Modo oscuro'}</span>
-          </button>
+          <div className="header-status" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            {guardando && (
+              <span className="saving-indicator" style={{ color: '#f59e0b' }}>💾 Guardando...</span>
+            )}
+            {pendienteGuardado && (
+              <span className="pending-indicator" style={{ color: '#6b7280' }}>⏳ Cambios pendientes...</span>
+            )}
+            
+            <button
+              className="theme-toggle"
+              onClick={() => setModoOscuro((prev) => !prev)}
+              style={{
+                background: 'none',
+                border: '1px solid #d1d5db',
+                padding: '8px 12px',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              {modoOscuro ? <Sun size={16} /> : <Moon size={16} />}
+              <span>{modoOscuro ? 'Modo claro' : 'Modo oscuro'}</span>
+            </button>
+          </div>
         </div>
 
-        {mensajeExito && <div className="message-success fade-in">{mensajeExito}</div>}
-        {error && <div className="message-error">{error}</div>}
+        {/* NOTIFICACIONES MEJORADAS */}
+        <div className="notifications">
+          {mensajeExito && <div className="message-success fade-in">✅ {mensajeExito}</div>}
+          {error && (
+            <div className="message-error" style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center' 
+            }}>
+              <span>❌ {error}</span>
+              <button 
+                onClick={() => setError(null)}
+                style={{ 
+                  background: 'none', 
+                  border: 'none', 
+                  color: 'inherit', 
+                  cursor: 'pointer' 
+                }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
+        </div>
 
         <div className="action-buttons">
           <button className="btn btn-export" onClick={exportarDatos}>
@@ -420,10 +654,6 @@ const BudgetTracker = () => {
             <Trash2 size={18} /> Limpiar
           </button>
         </div>
-
-        {guardando && (
-          <p className="saving-indicator">Guardando cambios en el servidor...</p>
-        )}
       </div>
 
       {/* NAV */}
@@ -646,136 +876,18 @@ const BudgetTracker = () => {
             </div>
           </div>
 
-          {/* LISTA DE GASTOS */}
+          {/* LISTA DE GASTOS CORREGIDA */}
           <div className="expense-list">
             {gastosFiltrados.map((gasto) => (
               <div
                 className={`expense-item ${gasto.pagado ? 'paid' : ''} fade-in`}
                 key={gasto.id}
+                style={{
+                  opacity: gasto.pagado ? 0.7 : 1,
+                  borderLeft: gasto.pagado ? '4px solid #10b981' : '4px solid #6b7280'
+                }}
               >
-                {editandoGasto === gasto.id ? (
-                  // MODO EDICIÓN
-                  <div style={{ width: '100%' }}>
-                    <div className="edit-form-grid">
-                      <div>
-                        <label className="edit-form-label">Nombre</label>
-                        <input
-                          className="form-input"
-                          type="text"
-                          value={gastoEditado.nombre || ''}
-                          onChange={(e) =>
-                            handleEditChange('nombre', e.target.value)
-                          }
-                        />
-                      </div>
-                      <div>
-                        <label className="edit-form-label">Monto</label>
-                        <input
-                          className="form-input"
-                          type="number"
-                          value={gastoEditado.monto || ''}
-                          onChange={(e) =>
-                            handleEditChange('monto', e.target.value)
-                          }
-                        />
-                      </div>
-                      <div>
-                        <label className="edit-form-label">Categoría</label>
-                        <select
-                          className="form-input"
-                          value={gastoEditado.categoria || ''}
-                          onChange={(e) =>
-                            handleEditChange('categoria', e.target.value)
-                          }
-                        >
-                          {categorias.map((c) => (
-                            <option key={c} value={c}>
-                              {c}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="edit-form-label">Mes</label>
-                        <select
-                          className="form-input"
-                          value={gastoEditado.mes || ''}
-                          onChange={(e) =>
-                            handleEditChange('mes', e.target.value)
-                          }
-                        >
-                          {meses.map((m) => (
-                            <option key={m} value={m}>
-                              {m}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <button className="btn-add" onClick={guardarEdicion}>
-                        <Save size={14} />
-                        Guardar
-                      </button>
-                      <button className="btn-cancel" onClick={cancelarEdicion}>
-                        <X size={14} />
-                        Cancelar
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  // MODO LECTURA
-                  <>
-                    <div className="expense-info">
-                      <div
-                        className={`expense-category ${
-                          categoriaColors[gasto.categoria] || 'blue'
-                        }`}
-                      />
-                      <div className="expense-details">
-                        <h4>{gasto.nombre}</h4>
-                        <div className="expense-meta">
-                          <span>{gasto.categoria}</span>
-                          <span>•</span>
-                          <span>{gasto.mes}</span>
-                          {gasto.recurrente && (
-                            <span className="expense-recurrent">
-                              🔄 Recurrente
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="expense-actions">
-                      <span className="expense-amount">
-                        {formatMoney(gasto.monto)}
-                      </span>
-
-                      <button
-                        className={
-                          gasto.pagado ? 'btn-mark-unpaid' : 'btn-mark-paid'
-                        }
-                        onClick={() => togglePago(gasto.id)}
-                      >
-                        {gasto.pagado ? '❌ No pagado' : '✅ Pagado'}
-                      </button>
-
-                      <button
-                        className="btn-edit"
-                        onClick={() => iniciarEdicion(gasto)}
-                      >
-                        <Edit size={14} />
-                      </button>
-
-                      <button
-                        className="btn-delete"
-                        onClick={() => eliminarGasto(gasto.id)}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </>
-                )}
+                {renderExpenseItem(gasto)}
               </div>
             ))}
 
