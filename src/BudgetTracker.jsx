@@ -15,7 +15,6 @@ import {
   BarChart3,
   X,
   Edit,
-  Save,
   Sun,
   Moon
 } from 'lucide-react';
@@ -82,8 +81,6 @@ const BudgetTracker = () => {
 
   const [mostrarModalGasto, setMostrarModalGasto] = useState(false);
   const [mensajeExito, setMensajeExito] = useState('');
-  const [editandoGasto, setEditandoGasto] = useState(null);
-  const [gastoEditado, setGastoEditado] = useState({});
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState(null);
@@ -281,57 +278,6 @@ const BudgetTracker = () => {
       mostrarExito('🗑️ Gasto eliminado');
     }
   }, []);
-
-  const iniciarEdicion = (gasto) => {
-    setEditandoGasto(gasto.id);
-    setGastoEditado({ 
-      ...gasto,
-      monto: gasto.monto.toString()
-    });
-  };
-
-  const cancelarEdicion = () => {
-    setEditandoGasto(null);
-    setGastoEditado({});
-  };
-
-  const guardarEdicion = () => {
-    const monto = parseFloat(gastoEditado.monto);
-    
-    if (!gastoEditado.nombre?.trim()) {
-      setError('El nombre del gasto es requerido');
-      return;
-    }
-    
-    if (isNaN(monto) || monto <= 0) {
-      setError('El monto debe ser un número mayor a 0');
-      return;
-    }
-
-    setGastos((prev) =>
-      prev.map((g) =>
-        g.id === editandoGasto
-          ? { 
-              ...gastoEditado, 
-              monto,
-              pagado: Boolean(gastoEditado.pagado)
-            }
-          : g
-      )
-    );
-
-    setEditandoGasto(null);
-    setGastoEditado({});
-    setError(null);
-    mostrarExito('✅ Gasto actualizado');
-  };
-
-  const handleEditChange = (field, value) => {
-    setGastoEditado((prev) => ({ 
-      ...prev, 
-      [field]: field === 'pagado' ? Boolean(value) : value 
-    }));
-  };
 
   // CREAR GASTO - CORREGIDO
   const agregarGasto = () => {
@@ -751,7 +697,7 @@ const BudgetTracker = () => {
                     {gasto.pagado ? '❌ No pagado' : '✅ Pagado'}
                   </button>
 
-                  <button className="btn-edit" onClick={() => iniciarEdicion(gasto)}>
+                  <button className="btn-edit">
                     <Edit size={14} />
                   </button>
 
