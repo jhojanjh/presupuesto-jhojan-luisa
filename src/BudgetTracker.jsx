@@ -15,10 +15,44 @@ import {
   BarChart3,
   X,
   Edit,
-  Save
+  Save,
+  Sun,
+  Moon
 } from 'lucide-react';
 
 const API_URL = 'https://budget-api-dt5y.onrender.com/api/budget/main';
+
+// ======= GASTOS INICIALES (fallback si el backend está vacío) =======
+const GASTOS_INICIALES = [
+  { id: 1, nombre: 'Arriendo', categoria: 'Arriendo', monto: 720000, mes: 'Diciembre', pagado: false, recurrente: true },
+  { id: 2, nombre: 'Arriendo', categoria: 'Arriendo', monto: 720000, mes: 'Enero', pagado: false, recurrente: true },
+  { id: 3, nombre: 'Arriendo', categoria: 'Arriendo', monto: 720000, mes: 'Febrero', pagado: false, recurrente: true },
+  { id: 4, nombre: 'Internet LU', categoria: 'Servicios', monto: 100000, mes: 'Diciembre', pagado: false, recurrente: true },
+  { id: 5, nombre: 'Internet JN', categoria: 'Servicios', monto: 80000, mes: 'Diciembre', pagado: false, recurrente: true },
+  { id: 6, nombre: 'Luz', categoria: 'Servicios', monto: 380000, mes: 'Diciembre', pagado: false, recurrente: true },
+  { id: 7, nombre: 'Agua', categoria: 'Servicios', monto: 400000, mes: 'Diciembre', pagado: false, recurrente: true },
+  { id: 8, nombre: 'Celula', categoria: 'Servicios', monto: 285000, mes: 'Diciembre', pagado: false, recurrente: true },
+  { id: 9, nombre: 'Internet LU', categoria: 'Servicios', monto: 100000, mes: 'Enero', pagado: false, recurrente: true },
+  { id: 10, nombre: 'Internet JN', categoria: 'Servicios', monto: 80000, mes: 'Enero', pagado: false, recurrente: true },
+  { id: 11, nombre: 'Luz', categoria: 'Servicios', monto: 380000, mes: 'Enero', pagado: false, recurrente: true },
+  { id: 12, nombre: 'Agua', categoria: 'Servicios', monto: 400000, mes: 'Enero', pagado: false, recurrente: true },
+  { id: 13, nombre: 'Celula', categoria: 'Servicios', monto: 285000, mes: 'Enero', pagado: false, recurrente: true },
+  { id: 14, nombre: 'Internet LU', categoria: 'Servicios', monto: 100000, mes: 'Febrero', pagado: false, recurrente: true },
+  { id: 15, nombre: 'Internet JN', categoria: 'Servicios', monto: 80000, mes: 'Febrero', pagado: false, recurrente: true },
+  { id: 16, nombre: 'Luz', categoria: 'Servicios', monto: 380000, mes: 'Febrero', pagado: false, recurrente: true },
+  { id: 17, nombre: 'Agua', categoria: 'Servicios', monto: 400000, mes: 'Febrero', pagado: false, recurrente: true },
+  { id: 18, nombre: 'Celula', categoria: 'Servicios', monto: 285000, mes: 'Febrero', pagado: false, recurrente: true },
+  { id: 19, nombre: 'Mercado', categoria: 'Mercado', monto: 467000, mes: 'Diciembre', pagado: false, recurrente: true },
+  { id: 20, nombre: 'Mercado', categoria: 'Mercado', monto: 467000, mes: 'Enero', pagado: false, recurrente: true },
+  { id: 21, nombre: 'Mercado', categoria: 'Mercado', monto: 466000, mes: 'Febrero', pagado: false, recurrente: true },
+  { id: 22, nombre: 'Tarjeta de Crédito', categoria: 'Tarjetas', monto: 1580000, mes: 'Diciembre', pagado: false, unico: true },
+  { id: 23, nombre: 'ITO', categoria: 'Tarjetas', monto: 900000, mes: 'Diciembre', pagado: false, unico: true },
+  { id: 24, nombre: 'Moto - Baul', categoria: 'Moto', monto: 150000, mes: 'Diciembre', pagado: false, unico: true },
+  { id: 25, nombre: 'Moto - Aceite', categoria: 'Moto', monto: 150000, mes: 'Diciembre', pagado: false, unico: true },
+  { id: 26, nombre: 'Moto - Gasolina', categoria: 'Moto', monto: 150000, mes: 'Diciembre', pagado: false, unico: true },
+  { id: 27, nombre: 'Moto - Luces', categoria: 'Moto', monto: 100000, mes: 'Diciembre', pagado: false, unico: true },
+  { id: 28, nombre: 'Moto - Otros', categoria: 'Moto', monto: 250000, mes: 'Diciembre', pagado: false, unico: true }
+];
 
 const BudgetTracker = () => {
   const [gastos, setGastos] = useState([]);
@@ -33,7 +67,7 @@ const BudgetTracker = () => {
     mes: 'Diciembre'
   });
 
-  // 👉 NUEVO: estado para crear gastos
+  // estado para crear gastos
   const [nuevoGasto, setNuevoGasto] = useState({
     nombre: '',
     monto: '',
@@ -42,7 +76,7 @@ const BudgetTracker = () => {
     recurrente: true
   });
 
-  // 👉 NUEVO: modal para agregar gasto
+  // modal para agregar gasto
   const [mostrarModalGasto, setMostrarModalGasto] = useState(false);
 
   const [mensajeExito, setMensajeExito] = useState('');
@@ -52,6 +86,17 @@ const BudgetTracker = () => {
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState(null);
+
+  // modo oscuro / claro
+  const [modoOscuro, setModoOscuro] = useState(true);
+
+  useEffect(() => {
+    if (modoOscuro) {
+      document.body.classList.remove('light-mode');
+    } else {
+      document.body.classList.add('light-mode');
+    }
+  }, [modoOscuro]);
 
   // ================== CARGAR DESDE BACKEND ==================
   useEffect(() => {
@@ -64,11 +109,16 @@ const BudgetTracker = () => {
         if (!res.ok) throw new Error('Error al obtener los datos');
 
         const data = await res.json();
-        setGastos(data.gastos || []);
+
+        const gastosServidor = Array.isArray(data.gastos) ? data.gastos : [];
+        // si el backend viene vacío, usamos los iniciales
+        setGastos(gastosServidor.length > 0 ? gastosServidor : GASTOS_INICIALES);
         setAportes(data.aportes || []);
       } catch (err) {
         console.error(err);
         setError('No se pudieron cargar los datos del servidor.');
+        // si falla el backend, al menos mostramos los gastos iniciales
+        setGastos(GASTOS_INICIALES);
       } finally {
         setCargando(false);
       }
@@ -197,7 +247,7 @@ const BudgetTracker = () => {
     setGastoEditado((prev) => ({ ...prev, [field]: value }));
   };
 
-  // 👉 NUEVO: crear gasto
+  // crear gasto
   const agregarGasto = () => {
     const monto = parseFloat(nuevoGasto.monto);
     if (!nuevoGasto.nombre.trim()) {
@@ -303,16 +353,19 @@ const BudgetTracker = () => {
     Servicios: <Wifi size={18} />,
     Transporte: <Car size={18} />,
     Tarjetas: <CreditCard size={18} />
+    // Mercado y Moto pueden quedar sin icono
   };
 
   const categoriaColors = {
     Arriendo: 'blue',
     Servicios: 'green',
     Transporte: 'yellow',
-    Tarjetas: 'red'
+    Tarjetas: 'red',
+    Mercado: 'purple',
+    Moto: 'orange'
   };
 
-  const categorias = ['Arriendo', 'Servicios', 'Transporte', 'Tarjetas'];
+  const categorias = ['Arriendo', 'Servicios', 'Transporte', 'Tarjetas', 'Mercado', 'Moto'];
   const meses = ['Diciembre', 'Enero', 'Febrero'];
 
   const porcentajePagado =
@@ -330,11 +383,31 @@ const BudgetTracker = () => {
   }
 
   return (
-    <div className="app-container">
+    <div className={`app-container ${modoOscuro ? 'theme-dark' : 'theme-light'}`}>
       {/* HEADER */}
       <div className="header">
-        <h1>Control de Presupuesto Compartido</h1>
-        <p className="header-subtitle">Diciembre 2024 - Febrero 2025</p>
+        <div
+          className="header-top-row"
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '1rem'
+          }}
+        >
+          <div>
+            <h1>Control de Presupuesto Compartido</h1>
+            <p className="header-subtitle">Diciembre 2024 - Febrero 2025</p>
+          </div>
+
+          <button
+            className="theme-toggle"
+            onClick={() => setModoOscuro((prev) => !prev)}
+          >
+            {modoOscuro ? <Sun size={16} /> : <Moon size={16} />}
+            <span>{modoOscuro ? 'Modo claro' : 'Modo oscuro'}</span>
+          </button>
+        </div>
 
         {mensajeExito && <div className="message-success fade-in">{mensajeExito}</div>}
         {error && <div className="message-error">{error}</div>}
@@ -773,7 +846,9 @@ const BudgetTracker = () => {
 
           {/* HISTORIAL APORTES */}
           <div className="card fade-in">
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1rem' }}>
+            <h3
+              style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1rem' }}
+            >
               Historial de Aportes
             </h3>
             <div className="contribution-list">
@@ -902,7 +977,10 @@ const BudgetTracker = () => {
             </div>
 
             <div className="modal-footer">
-              <button className="btn-cancel" onClick={() => setMostrarModalGasto(false)}>
+              <button
+                className="btn-cancel"
+                onClick={() => setMostrarModalGasto(false)}
+              >
                 Cancelar
               </button>
               <button className="btn-add" onClick={agregarGasto}>
