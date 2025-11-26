@@ -1,3 +1,4 @@
+// src/BudgetTracker.jsx
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   DollarSign,
@@ -18,101 +19,136 @@ import {
   Save
 } from 'lucide-react';
 
-// BACKEND
-const API_URL = "https://budget-api-dt5y.onrender.com/api/budget/main";
+// URL del backend en Render
+const API_URL = 'https://budget-api-dt5y.onrender.com/api/budget/main';
 
 const BudgetTracker = () => {
   const [gastos, setGastos] = useState([]);
   const [aportes, setAportes] = useState([]);
 
-  const [vistaActual, setVistaActual] = useState("dashboard");
-  const [mesSeleccionado, setMesSeleccionado] = useState("Todos");
-  const [nuevoAporte, setNuevoAporte] = useState({ persona: "Jhojan", monto: "", mes: "Diciembre" });
-  const [mensajeExito, setMensajeExito] = useState("");
-  const [editandoGasto, setEditandoGasto] = useState(null);
-  const [gastoEditado, setGastoEditado] = useState({});
-  const [error, setError] = useState(null);
-  const [guardando, setGuardando] = useState(false);
-  const [cargando, setCargando] = useState(true);
-
-  // 🔵 NUEVO: estado para abrir/cerrar modal de nuevo gasto
-  const [modalGasto, setModalGasto] = useState(false);
+  const [vistaActual, setVistaActual] = useState('dashboard');
+  const [mesSeleccionado, setMesSeleccionado] = useState('Todos');
+  const [nuevoAporte, setNuevoAporte] = useState({
+    persona: 'Jhojan',
+    monto: '',
+    mes: 'Diciembre'
+  });
   const [nuevoGasto, setNuevoGasto] = useState({
-    nombre: "",
-    categoria: "Servicios",
-    monto: "",
-    mes: "Diciembre",
+    nombre: '',
+    monto: '',
+    categoria: 'Arriendo',
+    mes: 'Diciembre',
     recurrente: false
   });
 
-  // ==============================
-  // CARGAR DATOS DEL BACKEND
-  // ==============================
-  useEffect(() => {
-    const cargarDatos = async () => {
-      try {
-        const res = await fetch(API_URL);
-        if (!res.ok) throw new Error("Error cargando datos");
+  const [mensajeExito, setMensajeExito] = useState('');
+  const [editandoGasto, setEditandoGasto] = useState(null);
+  const [gastoEditado, setGastoEditado] = useState({});
 
+  const [cargando, setCargando] = useState(true);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState(null);
+
+  // ---------- Helpers para normalizar ----------
+  const normalizarGasto = (g) => ({
+    ...g,
+    // por si vienen como string
+    monto: Number(g.monto) || 0,
+    pagado: g.pagado === true || g.pagado === 'true',
+    recurrente: g.recurrente === true || g.recurrente === 'true'
+  });
+
+  const normalizarAporte = (a) => ({
+    ...a,
+    monto: Number(a.monto) || 0
+  });
+
+  // 1. Cargar datos desde el backend al iniciar
+  useEffect(() => {
+    const fetchBudget = async () => {
+      try {
+        setCargando(true);
+        setError(null);
+        const res = await fetch(API_URL);
+        if (!res.ok) {
+          throw new Error('Error al obtener los datos');
+        }
         const data = await res.json();
-        setGastos(data.gastos || []);
-        setAportes(data.aportes || []);
+
+        const gastosNorm = (data.gastos || []).map(normalizarGasto);
+        const aportesNorm = (data.aportes || []).map(normalizarAporte);
+
+        setGastos(gastosNorm);
+        setAportes(aportesNorm);
       } catch (err) {
-        setError("No se pudieron cargar los datos del servidor.");
+        console.error(err);
+        setError('No se pudieron cargar los datos del servidor.');
       } finally {
         setCargando(false);
       }
     };
 
-    cargarDatos();
+    fetchBudget();
   }, []);
 
-  // ===========================================
-  // AUTO-GUARDADO AL BACKEND (PUT)
-  // ===========================================
+  // 2. Guardar automáticamente cada vez que cambien gastos/aportes (debounce)
   useEffect(() => {
-    if (cargando) return;
+    if (cargando) return; // no guardar mientras carga
 
     const timeout = setTimeout(async () => {
       try {
         setGuardando(true);
-        await fetch(API_URL, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
+        const res = await fetch(API_URL, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          },
           body: JSON.stringify({ gastos, aportes })
         });
+        if (!res.ok) {
+          throw new Error('Error al guardar datos');
+        }
+        await res.json();
       } catch (err) {
-        setError("No se pudieron guardar los cambios.");
+        console.error(err);
+        setError('No se pudieron guardar los cambios en el servidor.');
       } finally {
         setGuardando(false);
       }
-    }, 900);
+    }, 800); // 0.8 s
 
     return () => clearTimeout(timeout);
   }, [gastos, aportes, cargando]);
 
-  // ===========================================
-  // CÁLCULOS
-  // ===========================================
+  // ---------- Cálculos ----------
   const calculos = useMemo(() => {
-    const totalGastos = gastos.reduce((s, g) => s + g.monto, 0);
-    const gastosPagados = gastos.filter(g => g.pagado).reduce((s, g) => s + g.monto, 0);
-    const totalAportes = aportes.reduce((s, a) => s + a.monto, 0);
+    const totalGastos = gastos.reduce((sum, g) => sum + (Number(g.monto) || 0), 0);
+
+    const gastosPagados = gastos
+      .filter((g) => g.pagado) // aquí solo los realmente pagados
+      .reduce((sum, g) => sum + (Number(g.monto) || 0), 0);
+
+    const totalAportes = aportes.reduce((sum, a) => sum + (Number(a.monto) || 0), 0);
 
     const aportesPorPersona = {
-      "Jhojan": aportes.filter(a => a.persona === "Jhojan").reduce((s, a) => s + a.monto, 0),
-      "Luisa ❤️": aportes.filter(a => a.persona === "Luisa ❤️").reduce((s, a) => s + a.monto, 0)
+      Jhojan: aportes
+        .filter((a) => a.persona === 'Jhojan')
+        .reduce((sum, a) => sum + (Number(a.monto) || 0), 0),
+      'Luisa ❤️': aportes
+        .filter((a) => a.persona === 'Luisa ❤️')
+        .reduce((sum, a) => sum + (Number(a.monto) || 0), 0)
     };
 
     const mitadGastos = totalGastos / 2;
 
     const balance = {
-      "Jhojan": aportesPorPersona["Jhojan"] - mitadGastos,
-      "Luisa ❤️": aportesPorPersona["Luisa ❤️"] - mitadGastos
+      Jhojan: aportesPorPersona['Jhojan'] - mitadGastos,
+      'Luisa ❤️': aportesPorPersona['Luisa ❤️'] - mitadGastos
     };
 
     const gastosPorCategoria = gastos.reduce((acc, g) => {
-      acc[g.categoria] = (acc[g.categoria] || 0) + g.monto;
+      const monto = Number(g.monto) || 0;
+      acc[g.categoria] = (acc[g.categoria] || 0) + monto;
       return acc;
     }, {});
 
@@ -120,254 +156,314 @@ const BudgetTracker = () => {
       totalGastos,
       gastosPagados,
       totalAportes,
-      mitadGastos,
+      // 💡 AHORA el saldo se calcula con lo pagado, no con todo
       saldoDisponible: totalAportes - gastosPagados,
       aportesPorPersona,
       balance,
-      gastosPorCategoria
+      gastosPorCategoria,
+      mitadGastos
     };
   }, [gastos, aportes]);
 
-  // utilidad para $
-  const formatMoney = n => "$" + n.toLocaleString("es-CO");
-
-  // FILTRO
-  const gastosFiltrados = mesSeleccionado === "Todos"
-    ? gastos
-    : gastos.filter(g => g.mes === mesSeleccionado);
-
-  // CATEGORÍAS E ICONOS
-  const categoriaIcons = {
-    "Arriendo": <Home size={18} />,
-    "Servicios": <Wifi size={18} />,
-    "Transporte": <Car size={18} />,
-    "Tarjetas": <CreditCard size={18} />
-  };
-
-  const categorias = ["Arriendo", "Servicios", "Transporte", "Tarjetas"];
-  const meses = ["Diciembre", "Enero", "Febrero"];
-
-  // ===========================================
-  // EVENTOS: marcar pagado
-  // ===========================================
-  const togglePago = id => {
-    setGastos(prev =>
-      prev.map(g => g.id === id ? { ...g, pagado: !g.pagado } : g)
+  // ---------- Acciones ----------
+  const togglePago = (id) => {
+    setGastos((prev) =>
+      prev.map((g) =>
+        g.id === id ? { ...g, pagado: !g.pagado } : g
+      )
     );
   };
 
-  // ===========================================
-  // EVENTOS: eliminar gasto
-  // ===========================================
-  const eliminarGasto = id => {
-    if (window.confirm("¿Seguro que quieres eliminar este gasto?")) {
-      setGastos(prev => prev.filter(g => g.id !== id));
-      mostrarMsg("🗑️ Gasto eliminado");
+  const eliminarGasto = (id) => {
+    if (window.confirm('¿Seguro que quieres eliminar este gasto?')) {
+      setGastos((prev) => prev.filter((g) => g.id !== id));
+      mostrarExito('🗑️ Gasto eliminado');
     }
   };
 
-  // ===========================================
-  // EVENTOS: eliminar aporte
-  // ===========================================
-  const eliminarAporte = id => {
-    if (window.confirm("¿Seguro que quieres eliminar este aporte?")) {
-      setAportes(prev => prev.filter(a => a.id !== id));
-      mostrarMsg("🗑️ Aporte eliminado");
-    }
+  const mostrarExito = (mensaje) => {
+    setMensajeExito(mensaje);
+    setTimeout(() => setMensajeExito(''), 3000);
   };
 
-  // ===========================================
-  // MODAL: guardar nuevo gasto
-  // ===========================================
-  const guardarNuevoGasto = () => {
-    const monto = parseFloat(nuevoGasto.monto);
-
-    if (!nuevoGasto.nombre || !monto || monto <= 0) {
-      alert("Completa los campos correctamente");
-      return;
-    }
-
-    setGastos(prev => [
-      ...prev,
-      {
-        id: Date.now(),
-        ...nuevoGasto,
-        monto,
-        pagado: false
-      }
-    ]);
-
-    // limpiar modal
-    setNuevoGasto({
-      nombre: "",
-      categoria: "Servicios",
-      monto: "",
-      mes: "Diciembre",
-      recurrente: false
-    });
-
-    setModalGasto(false);
-    mostrarMsg("✅ Gasto agregado");
-  };
-
-  // ===========================================
-  // EVENTOS: mostrar mensajes pequeños arriba
-  // ===========================================
-  const mostrarMsg = msg => {
-    setMensajeExito(msg);
-    setTimeout(() => setMensajeExito(""), 3000);
-  };
-
-  // ===========================================
-  // AGREGAR APORTE
-  // ===========================================
   const agregarAporte = () => {
     const monto = parseFloat(nuevoAporte.monto);
+
     if (!monto || monto <= 0) {
-      alert("Ingresa un monto válido");
+      alert('Por favor ingresa un monto válido mayor a 0');
       return;
     }
 
-    setAportes(prev => [
+    setAportes((prev) => [
       ...prev,
       {
         id: Date.now(),
         persona: nuevoAporte.persona,
-        mes: nuevoAporte.mes,
-        monto
+        monto,
+        mes: nuevoAporte.mes
       }
     ]);
-
-    setNuevoAporte({ persona: "Jhojan", monto: "", mes: "Diciembre" });
-    mostrarMsg("Aporte agregado");
+    setNuevoAporte({ persona: 'Jhojan', monto: '', mes: 'Diciembre' });
+    mostrarExito(`✅ Aporte de ${formatMoney(monto)} agregado exitosamente`);
   };
 
-  // ===========================================
-  // LIMPIAR TODO
-  // ===========================================
+  const agregarGasto = () => {
+    const monto = parseFloat(nuevoGasto.monto);
+
+    if (!nuevoGasto.nombre.trim() || !monto || monto <= 0) {
+      alert('Por favor completa el nombre y un monto válido mayor a 0');
+      return;
+    }
+
+    setGastos((prev) => [
+      ...prev,
+      normalizarGasto({
+        id: Date.now(),
+        nombre: nuevoGasto.nombre.trim(),
+        categoria: nuevoGasto.categoria,
+        monto,
+        mes: nuevoGasto.mes,
+        pagado: false,
+        recurrente: nuevoGasto.recurrente
+      })
+    ]);
+
+    setNuevoGasto({
+      nombre: '',
+      monto: '',
+      categoria: 'Arriendo',
+      mes: 'Diciembre',
+      recurrente: false
+    });
+
+    mostrarExito('🧾 Gasto agregado correctamente');
+  };
+
   const limpiarDatos = () => {
-    if (window.confirm("¿Seguro que deseas limpiar todo?")) {
+    if (
+      window.confirm(
+        '¿Estás seguro de que quieres limpiar todos los datos? Esta acción no se puede deshacer.'
+      )
+    ) {
       setGastos([]);
       setAportes([]);
-      mostrarMsg("Datos limpiados");
+      mostrarExito('🧹 Datos limpiados (se guardará en el servidor).');
     }
   };
 
-  // ===========================================
-  // EXPORTAR
-  // ===========================================
-  const exportar = () => {
+  const exportarDatos = () => {
     const data = {
       gastos,
       aportes,
-      fecha: new Date().toISOString(),
+      exportado: new Date().toISOString(),
       totales: calculos
     };
 
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `presupuesto-${new Date().toISOString().slice(0, 10)}.json`;
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: 'application/json'
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `presupuesto-${new Date().toISOString().split('T')[0]}.json`;
     link.click();
+    URL.revokeObjectURL(url);
+    mostrarExito('📊 Datos exportados exitosamente');
   };
 
-  if (cargando) return <p>Cargando datos...</p>;
+  const iniciarEdicion = (gasto) => {
+    setEditandoGasto(gasto.id);
+    setGastoEditado({ ...gasto });
+  };
+
+  const cancelarEdicion = () => {
+    setEditandoGasto(null);
+    setGastoEditado({});
+  };
+
+  const guardarEdicion = () => {
+    if (!gastoEditado.nombre || !gastoEditado.monto || gastoEditado.monto <= 0) {
+      alert('Por favor completa todos los campos correctamente');
+      return;
+    }
+
+    setGastos((prev) =>
+      prev.map((g) =>
+        g.id === editandoGasto
+          ? normalizarGasto({
+              ...gastoEditado,
+              monto: parseFloat(gastoEditado.monto)
+            })
+          : g
+      )
+    );
+
+    setEditandoGasto(null);
+    setGastoEditado({});
+    mostrarExito('✅ Gasto actualizado exitosamente');
+  };
+
+  const handleEditChange = (field, value) => {
+    setGastoEditado((prev) => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const formatMoney = (num) => {
+    return '$' + (Number(num) || 0).toLocaleString('es-CO');
+  };
+
+  const gastosFiltrados =
+    mesSeleccionado === 'Todos'
+      ? gastos
+      : gastos.filter((g) => g.mes === mesSeleccionado);
+
+  const categoriaIcons = {
+    Arriendo: <Home size={18} />,
+    Servicios: <Wifi size={18} />,
+    Transporte: <Car size={18} />,
+    Tarjetas: <CreditCard size={18} />
+  };
+
+  const categoriaColors = {
+    Arriendo: 'blue',
+    Servicios: 'green',
+    Transporte: 'yellow',
+    Tarjetas: 'red'
+  };
+
+  const getCategoryColor = (categoria) => {
+    return categoriaColors[categoria] || 'blue';
+  };
+
+  const categorias = ['Arriendo', 'Servicios', 'Transporte', 'Tarjetas'];
+  const meses = ['Diciembre', 'Enero', 'Febrero'];
+
+  const porcentajePagado =
+    calculos.totalGastos > 0
+      ? ((calculos.gastosPagados / calculos.totalGastos) * 100).toFixed(1)
+      : null;
+
+  if (cargando) {
+    return (
+      <div className="app-container">
+        <p>Cargando datos del servidor...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="app-container">
-
-      {/* HEADER */}
+      {/* Header */}
       <div className="header">
         <h1>Control de Presupuesto Compartido</h1>
         <p className="header-subtitle">Diciembre 2024 - Febrero 2025</p>
 
         {mensajeExito && <div className="message-success">{mensajeExito}</div>}
+
         {error && <div className="message-error">{error}</div>}
 
         <div className="action-buttons">
-          <button className="btn btn-export" onClick={exportar}>
-            <Download size={18} /> Exportar
+          <button onClick={exportarDatos} className="btn btn-export">
+            <Download size={18} />
+            Exportar
           </button>
-
-          <button className="btn btn-clear" onClick={limpiarDatos}>
-            <Trash2 size={18} /> Limpiar
+          <button onClick={limpiarDatos} className="btn btn-clear">
+            <Trash2 size={18} />
+            Limpiar
           </button>
         </div>
 
-        {guardando && <p className="saving-indicator">Guardando cambios...</p>}
+        {guardando && (
+          <p className="saving-indicator">Guardando cambios en el servidor...</p>
+        )}
       </div>
 
-      {/* NAVEGACIÓN */}
+      {/* Navigation */}
       <div className="nav-container">
-        <button className={`nav-btn ${vistaActual === "dashboard" ? "active" : ""}`} onClick={() => setVistaActual("dashboard")}>
-          <BarChart3 size={18} /> Dashboard
-        </button>
-
-        <button className={`nav-btn ${vistaActual === "gastos" ? "active" : ""}`} onClick={() => setVistaActual("gastos")}>
-          <DollarSign size={18} /> Gastos
-        </button>
-
-        <button className={`nav-btn ${vistaActual === "aportes" ? "active" : ""}`} onClick={() => setVistaActual("aportes")}>
-          <TrendingUp size={18} /> Aportes
-        </button>
+        {[
+          { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+          { id: 'gastos', label: 'Gastos', icon: DollarSign },
+          { id: 'aportes', label: 'Aportes', icon: TrendingUp }
+        ].map((item) => (
+          <button
+            key={item.id}
+            onClick={() => setVistaActual(item.id)}
+            className={`nav-btn ${vistaActual === item.id ? 'active' : ''}`}
+          >
+            <item.icon size={18} />
+            {item.label}
+          </button>
+        ))}
       </div>
 
-      {/* =============================================
-         DASHBOARD
-      ============================================= */}
-      {vistaActual === "dashboard" && (
-        <>
+      {/* Vista Dashboard */}
+      {vistaActual === 'dashboard' && (
+        <div>
+          {/* Stats Grid */}
           <div className="stats-grid">
-
-            <div className="card stat-card">
-              <div className="stat-item">
-                <div className="stat-header">
-                  <span>Total Gastos</span>
-                  <div className="stat-icon bg-blue-500"><DollarSign size={20} /></div>
+            {[
+              {
+                title: 'Total Gastos',
+                value: calculos.totalGastos,
+                subtitle: '3 meses',
+                icon: DollarSign,
+                color: 'bg-blue-500'
+              },
+              {
+                title: 'Total Aportado',
+                value: calculos.totalAportes,
+                subtitle: 'Por ambos',
+                icon: TrendingUp,
+                color: 'bg-green-500'
+              },
+              {
+                title: 'Pagado',
+                value: calculos.gastosPagados,
+                subtitle:
+                  porcentajePagado !== null
+                    ? `${porcentajePagado}% completado`
+                    : 'Sin gastos registrados',
+                icon: Check,
+                color: 'bg-emerald-500'
+              },
+              {
+                title: 'Saldo',
+                value: calculos.saldoDisponible,
+                subtitle: 'Disponible según lo pagado',
+                icon: PieChart,
+                color: 'bg-purple-500'
+              }
+            ].map((card, index) => (
+              <div key={index} className="card">
+                <div className="stat-item">
+                  <div className="stat-header">
+                    <span className="stat-title">{card.title}</span>
+                    <div className={`stat-icon ${card.color}`}>
+                      <card.icon className="text-white" size={20} />
+                    </div>
+                  </div>
+                  <div className="stat-value">
+                    {formatMoney(card.value)}
+                  </div>
+                  <div className="stat-subtitle">{card.subtitle}</div>
                 </div>
-                <div className="stat-value">{formatMoney(calculos.totalGastos)}</div>
               </div>
-            </div>
-
-            <div className="card stat-card">
-              <div className="stat-item">
-                <div className="stat-header">
-                  <span>Total Aportado</span>
-                  <div className="stat-icon bg-green-500"><TrendingUp size={20} /></div>
-                </div>
-                <div className="stat-value">{formatMoney(calculos.totalAportes)}</div>
-              </div>
-            </div>
-
-            <div className="card stat-card">
-              <div className="stat-item">
-                <div className="stat-header">
-                  <span>Pagado</span>
-                  <div className="stat-icon bg-emerald-500"><Check size={20} /></div>
-                </div>
-                <div className="stat-value">{formatMoney(calculos.gastosPagados)}</div>
-              </div>
-            </div>
-
-            <div className="card stat-card">
-              <div className="stat-item">
-                <div className="stat-header">
-                  <span>Saldo</span>
-                  <div className="stat-icon bg-purple-500"><PieChart size={20} /></div>
-                </div>
-                <div className="stat-value">{formatMoney(calculos.saldoDisponible)}</div>
-              </div>
-            </div>
-
+            ))}
           </div>
 
-          {/* BALANCE */}
+          {/* Balance Section */}
           <div className="balance-grid">
-            {["Jhojan", "Luisa ❤️"].map(persona => (
-              <div className="card" key={persona}>
+            {['Jhojan', 'Luisa ❤️'].map((persona) => (
+              <div key={persona} className="card">
                 <div className="balance-header">
-                  <div className={`balance-avatar ${persona === "Jhojan" ? "purple" : "pink"}`}>
-                    <Users size={24} />
+                  <div
+                    className={`balance-avatar ${
+                      persona === 'Jhojan' ? 'purple' : 'pink'
+                    }`}
+                  >
+                    <Users className="text-white" size={24} />
                   </div>
                   <div className="balance-info">
                     <h3>{persona}</h3>
@@ -377,85 +473,202 @@ const BudgetTracker = () => {
 
                 <div className="balance-details">
                   <div className="balance-row">
-                    <span>Aportado:</span>
-                    <span className="green">{formatMoney(calculos.aportesPorPersona[persona])}</span>
+                    <span className="balance-label">Aportado:</span>
+                    <span className="balance-amount green">
+                      {formatMoney(calculos.aportesPorPersona[persona])}
+                    </span>
                   </div>
-
                   <div className="balance-row">
-                    <span>Tu parte (50%):</span>
-                    <span>{formatMoney(calculos.mitadGastos)}</span>
+                    <span className="balance-label">Tu parte (50%):</span>
+                    <span className="balance-amount">
+                      {formatMoney(calculos.mitadGastos)}
+                    </span>
                   </div>
-
                   <div className="balance-total">
                     <div className="balance-total-row">
-                      <span>Balance:</span>
-                      <span className={`balance-total-amount ${calculos.balance[persona] >= 0 ? "positive" : "negative"}`}>
+                      <span className="balance-total-label">Balance:</span>
+                      <span
+                        className={`balance-total-amount ${
+                          calculos.balance[persona] >= 0
+                            ? 'positive'
+                            : 'negative'
+                        }`}
+                      >
                         {formatMoney(Math.abs(calculos.balance[persona]))}
                       </span>
                     </div>
-
                     <p className="balance-note">
                       {calculos.balance[persona] > 0
-                        ? "Te deben dinero"
+                        ? 'Te deben este monto'
                         : calculos.balance[persona] < 0
-                        ? "Debes dinero"
-                        : "Estás al día"}
+                        ? 'Debes este monto'
+                        : 'Estás al día'}
                     </p>
                   </div>
-
                 </div>
               </div>
             ))}
           </div>
 
-          {/* GASTOS POR CATEGORÍA */}
+          {/* Gastos por Categoría */}
           <div className="card">
-            <h3 style={{ marginBottom: "1rem" }}>
-              <PieChart size={20} /> Gastos por Categoría
+            <h3
+              style={{
+                fontSize: '1.25rem',
+                fontWeight: '600',
+                marginBottom: '1.5rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <PieChart size={24} />
+              Gastos por Categoría
             </h3>
-
-            {Object.entries(calculos.gastosPorCategoria).map(([cat, monto]) => {
-              const porcentaje = calculos.totalGastos ? (monto / calculos.totalGastos * 100).toFixed(1) : 0;
-
-              return (
-                <div className="category-item" key={cat}>
-                  <div className="category-header">
-                    <div className="category-info">
-                      {categoriaIcons[cat]}
-                      <span>{cat}</span>
+            <div>
+              {Object.entries(calculos.gastosPorCategoria).map(
+                ([categoria, monto]) => {
+                  const porcentaje =
+                    calculos.totalGastos > 0
+                      ? ((monto / calculos.totalGastos) * 100).toFixed(1)
+                      : 0;
+                  return (
+                    <div key={categoria} className="category-item">
+                      <div className="category-header">
+                        <div className="category-info">
+                          <div style={{ color: '#9ca3af' }}>
+                            {categoriaIcons[categoria]}
+                          </div>
+                          <span className="category-name">
+                            {categoria}
+                          </span>
+                        </div>
+                        <div className="category-amount">
+                          <div className="category-value">
+                            {formatMoney(monto)}
+                          </div>
+                          <div className="category-percentage">
+                            {porcentaje}%
+                          </div>
+                        </div>
+                      </div>
+                      <div className="progress-bar">
+                        <div
+                          className="progress-fill"
+                          style={{ width: `${porcentaje}%` }}
+                        />
+                      </div>
                     </div>
-
-                    <div>
-                      <div>{formatMoney(monto)}</div>
-                      <div className="category-percentage">{porcentaje}%</div>
-                    </div>
-                  </div>
-
-                  <div className="progress-bar">
-                    <div className="progress-fill" style={{ width: `${porcentaje}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-
+                  );
+                }
+              )}
+            </div>
           </div>
-        </>
+        </div>
       )}
 
-      {/* =============================================
-         GASTOS
-      ============================================= */}
-      {vistaActual === "gastos" && (
-        <>
+      {/* Vista Gastos */}
+      {vistaActual === 'gastos' && (
+        <div>
+          {/* Formulario agregar gasto */}
+          <div className="card contribution-form">
+            <h3
+              style={{
+                fontSize: '1.25rem',
+                fontWeight: '600',
+                marginBottom: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <Plus size={24} style={{ color: '#38bdf8' }} />
+              Registrar Nuevo Gasto
+            </h3>
+
+            <div className="form-grid form-grid-gastos">
+              <input
+                type="text"
+                placeholder="Nombre del gasto"
+                value={nuevoGasto.nombre}
+                onChange={(e) =>
+                  setNuevoGasto({ ...nuevoGasto, nombre: e.target.value })
+                }
+                className="form-input"
+              />
+
+              <input
+                type="number"
+                placeholder="Monto"
+                value={nuevoGasto.monto}
+                onChange={(e) =>
+                  setNuevoGasto({ ...nuevoGasto, monto: e.target.value })
+                }
+                className="form-input"
+              />
+
+              <select
+                value={nuevoGasto.categoria}
+                onChange={(e) =>
+                  setNuevoGasto({ ...nuevoGasto, categoria: e.target.value })
+                }
+                className="form-input"
+              >
+                {categorias.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={nuevoGasto.mes}
+                onChange={(e) =>
+                  setNuevoGasto({ ...nuevoGasto, mes: e.target.value })
+                }
+                className="form-input"
+              >
+                {meses.map((mes) => (
+                  <option key={mes} value={mes}>
+                    {mes}
+                  </option>
+                ))}
+              </select>
+
+              <div className="recurrente-checkbox">
+                <input
+                  type="checkbox"
+                  id="nuevo-recurrente"
+                  checked={nuevoGasto.recurrente}
+                  onChange={(e) =>
+                    setNuevoGasto({
+                      ...nuevoGasto,
+                      recurrente: e.target.checked
+                    })
+                  }
+                />
+                <label htmlFor="nuevo-recurrente">Recurrente</label>
+              </div>
+
+              <button onClick={agregarGasto} className="btn-add">
+                <Plus size={18} />
+                Agregar gasto
+              </button>
+            </div>
+          </div>
+
+          {/* Filtros */}
           <div className="card">
             <div className="filters">
-              <span>Filtrar por mes:</span>
+              <span className="filter-label">Filtrar por mes:</span>
               <div className="filter-buttons">
-                {["Todos", ...meses].map(mes => (
+                {['Todos', 'Diciembre', 'Enero', 'Febrero'].map((mes) => (
                   <button
                     key={mes}
-                    className={`filter-btn ${mesSeleccionado === mes ? "active" : ""}`}
                     onClick={() => setMesSeleccionado(mes)}
+                    className={`filter-btn ${
+                      mesSeleccionado === mes ? 'active' : ''
+                    }`}
                   >
                     {mes}
                   </button>
@@ -464,273 +677,289 @@ const BudgetTracker = () => {
             </div>
           </div>
 
-          {/* BOTÓN PARA ABRIR EL MODAL */}
-          <button className="new-gasto-btn" onClick={() => setModalGasto(true)}>
-            <Plus size={18} /> Agregar Gasto
-          </button>
-
+          {/* Lista de gastos */}
           <div className="expense-list">
-            {gastosFiltrados.map(g => (
-              <div key={g.id} className={`expense-item ${g.pagado ? "paid" : ""}`}>
-
-                {/* MODO EDICIÓN */}
-                {editandoGasto === g.id ? (
-                  <div style={{ width: "100%" }}>
+            {gastosFiltrados.map((gasto) => (
+              <div
+                key={gasto.id}
+                className={`expense-item ${gasto.pagado ? 'paid' : ''}`}
+              >
+                {editandoGasto === gasto.id ? (
+                  // MODO EDICIÓN
+                  <div style={{ width: '100%' }}>
                     <div className="edit-form-grid">
-
                       <div>
-                        <label>Nombre</label>
+                        <label className="edit-form-label">Nombre</label>
                         <input
+                          type="text"
+                          value={gastoEditado.nombre || ''}
+                          onChange={(e) =>
+                            handleEditChange('nombre', e.target.value)
+                          }
                           className="form-input"
-                          value={gastoEditado.nombre}
-                          onChange={e => setGastoEditado(prev => ({ ...prev, nombre: e.target.value }))}
+                          style={{ fontSize: '14px' }}
                         />
                       </div>
 
                       <div>
-                        <label>Monto</label>
+                        <label className="edit-form-label">Monto</label>
                         <input
                           type="number"
+                          value={gastoEditado.monto || ''}
+                          onChange={(e) =>
+                            handleEditChange('monto', e.target.value)
+                          }
                           className="form-input"
-                          value={gastoEditado.monto}
-                          onChange={e => setGastoEditado(prev => ({ ...prev, monto: e.target.value }))}
+                          style={{ fontSize: '14px' }}
                         />
                       </div>
 
                       <div>
-                        <label>Categoría</label>
+                        <label className="edit-form-label">
+                          Categoría
+                        </label>
                         <select
+                          value={gastoEditado.categoria || ''}
+                          onChange={(e) =>
+                            handleEditChange('categoria', e.target.value)
+                          }
                           className="form-input"
-                          value={gastoEditado.categoria}
-                          onChange={e => setGastoEditado(prev => ({ ...prev, categoria: e.target.value }))}
+                          style={{ fontSize: '14px' }}
                         >
-                          {categorias.map(c => <option key={c}>{c}</option>)}
+                          {categorias.map((cat) => (
+                            <option key={cat} value={cat}>
+                              {cat}
+                            </option>
+                          ))}
                         </select>
                       </div>
 
                       <div>
-                        <label>Mes</label>
+                        <label className="edit-form-label">Mes</label>
                         <select
+                          value={gastoEditado.mes || ''}
+                          onChange={(e) =>
+                            handleEditChange('mes', e.target.value)
+                          }
                           className="form-input"
-                          value={gastoEditado.mes}
-                          onChange={e => setGastoEditado(prev => ({ ...prev, mes: e.target.value }))}
+                          style={{ fontSize: '14px' }}
                         >
-                          {meses.map(m => <option key={m}>{m}</option>)}
+                          {meses.map((mes) => (
+                            <option key={mes} value={mes}>
+                              {mes}
+                            </option>
+                          ))}
                         </select>
                       </div>
 
-                      <button className="btn-add" onClick={() => {
-                        setGastos(prev => prev.map(x => x.id === editandoGasto
-                          ? { ...gastoEditado, monto: parseFloat(gastoEditado.monto) }
-                          : x
-                        ));
-                        setEditandoGasto(null);
-                        mostrarMsg("Gasto actualizado");
-                      }}>
-                        <Save size={14} /> Guardar
+                      <button
+                        onClick={guardarEdicion}
+                        className="btn-add"
+                        style={{ padding: '8px 12px', fontSize: '12px' }}
+                      >
+                        <Save size={14} />
+                        Guardar
                       </button>
 
-                      <button className="btn-cancel" onClick={() => setEditandoGasto(null)}>
-                        <X size={14} /> Cancelar
+                      <button onClick={cancelarEdicion} className="btn-cancel">
+                        <X size={14} />
+                        Cancelar
                       </button>
+                    </div>
 
+                    <div
+                      style={{
+                        marginTop: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        id={`recurrente-${gasto.id}`}
+                        checked={gastoEditado.recurrente || false}
+                        onChange={(e) =>
+                          handleEditChange('recurrente', e.target.checked)
+                        }
+                        className="edit-checkbox"
+                      />
+                      <label
+                        htmlFor={`recurrente-${gasto.id}`}
+                        className="edit-checkbox-label"
+                      >
+                        Gasto recurrente
+                      </label>
                     </div>
                   </div>
-
                 ) : (
+                  // MODO VISUALIZACIÓN NORMAL
                   <>
-                    {/* MODO VIEW */}
                     <div className="expense-info">
-                      <div className={`expense-category`}></div>
-
+                      <div
+                        className={`expense-category ${getCategoryColor(
+                          gasto.categoria
+                        )}`}
+                      />
                       <div className="expense-details">
-                        <h4>{g.nombre}</h4>
+                        <h4>{gasto.nombre}</h4>
                         <div className="expense-meta">
-                          {g.categoria} • {g.mes}
-                          {g.recurrente && <span className="expense-recurrent"> 🔄 Recurrente</span>}
+                          <span>{gasto.categoria}</span>
+                          <span>•</span>
+                          <span>{gasto.mes}</span>
+                          {gasto.recurrente && (
+                            <span className="expense-recurrent">
+                              🔁 Recurrente
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
 
                     <div className="expense-actions">
-                      <span className="expense-amount">{formatMoney(g.monto)}</span>
+                      <span className="expense-amount">
+                        {formatMoney(gasto.monto)}
+                      </span>
 
-                      <button
-                        className={g.pagado ? "btn-mark-unpaid" : "btn-mark-paid"}
-                        onClick={() => togglePago(g.id)}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
+                        }}
                       >
-                        {g.pagado ? "❌ No pagado" : "✅ Pagado"}
-                      </button>
+                        <button
+                          onClick={() => togglePago(gasto.id)}
+                          className={
+                            gasto.pagado
+                              ? 'btn-mark-paid'
+                              : 'btn-mark-unpaid'
+                          }
+                        >
+                          {gasto.pagado ? '✅ Pagado' : '⏳ Pendiente'}
+                        </button>
 
-                      <button className="btn-edit" onClick={() => {
-                        setEditandoGasto(g.id);
-                        setGastoEditado(g);
-                      }}>
-                        <Edit size={14} />
-                      </button>
+                        <button
+                          onClick={() => iniciarEdicion(gasto)}
+                          className="btn-edit"
+                        >
+                          <Edit size={14} />
+                        </button>
 
-                      <button className="btn-delete" onClick={() => eliminarGasto(g.id)}>
-                        <Trash2 size={14} />
-                      </button>
+                        <button
+                          onClick={() => eliminarGasto(gasto.id)}
+                          className="btn-delete"
+                          title="Eliminar gasto"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
                   </>
                 )}
-
               </div>
             ))}
           </div>
-        </>
+        </div>
       )}
 
-      {/* =============================================
-         APORTES
-      ============================================= */}
-      {vistaActual === "aportes" && (
-        <>
+      {/* Vista Aportes */}
+      {vistaActual === 'aportes' && (
+        <div>
+          {/* Formulario agregar aporte */}
           <div className="card contribution-form">
-            <h3>Registrar Aporte</h3>
-
+            <h3
+              style={{
+                fontSize: '1.25rem',
+                fontWeight: '600',
+                marginBottom: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <Plus size={24} style={{ color: '#4ade80' }} />
+              Registrar Nuevo Aporte
+            </h3>
             <div className="form-grid">
-
               <select
-                className="form-input"
                 value={nuevoAporte.persona}
-                onChange={e => setNuevoAporte({ ...nuevoAporte, persona: e.target.value })}
+                onChange={(e) =>
+                  setNuevoAporte({ ...nuevoAporte, persona: e.target.value })
+                }
+                className="form-input"
               >
                 <option>Jhojan</option>
                 <option>Luisa ❤️</option>
               </select>
 
               <input
-                className="form-input"
                 type="number"
                 placeholder="Monto"
                 value={nuevoAporte.monto}
-                onChange={e => setNuevoAporte({ ...nuevoAporte, monto: e.target.value })}
+                onChange={(e) =>
+                  setNuevoAporte({ ...nuevoAporte, monto: e.target.value })
+                }
+                className="form-input"
               />
 
               <select
-                className="form-input"
                 value={nuevoAporte.mes}
-                onChange={e => setNuevoAporte({ ...nuevoAporte, mes: e.target.value })}
+                onChange={(e) =>
+                  setNuevoAporte({ ...nuevoAporte, mes: e.target.value })
+                }
+                className="form-input"
               >
-                {meses.map(m => <option key={m}>{m}</option>)}
+                <option>Diciembre</option>
+                <option>Enero</option>
+                <option>Febrero</option>
               </select>
 
-              <button className="btn-add" onClick={agregarAporte}>
-                <Plus size={18} /> Agregar
+              <button onClick={agregarAporte} className="btn-add">
+                <Plus size={18} />
+                Agregar
               </button>
-
             </div>
           </div>
 
+          {/* Lista de aportes */}
           <div className="card">
-            <h3>Historial de Aportes</h3>
-
+            <h3
+              style={{ fontSize: '1.25rem', fontWeight: '600', marginBottom: '1rem' }}
+            >
+              Historial de Aportes
+            </h3>
             <div className="contribution-list">
-              {aportes.map(a => (
-                <div key={a.id} className="contribution-item">
-
+              {aportes.map((aporte) => (
+                <div key={aporte.id} className="contribution-item">
                   <div className="contribution-person">
-                    <div className={`person-avatar ${a.persona === "Jhojan" ? "purple" : "pink"}`}>
-                      <Users size={24} />
+                    <div
+                      className={`person-avatar ${
+                        aporte.persona === 'Jhojan' ? 'purple' : 'pink'
+                      }`}
+                    >
+                      <Users size={24} className="text-white" />
                     </div>
-                    <div>
-                      <h4>{a.persona}</h4>
-                      <p>{a.mes}</p>
+                    <div className="person-info">
+                      <h4>{aporte.persona}</h4>
+                      <p>{aporte.mes}</p>
                     </div>
                   </div>
-
-                  <div className="contribution-actions">
-                    <span className="contribution-amount">{formatMoney(a.monto)}</span>
-                    <button className="btn-contribution-delete" onClick={() => eliminarAporte(a.id)}>
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-
+                  <span className="contribution-amount">
+                    {formatMoney(aporte.monto)}
+                  </span>
                 </div>
               ))}
 
-              {aportes.length === 0 && <div className="empty-state">No hay aportes registrados.</div>}
+              {aportes.length === 0 && (
+                <div className="empty-state">
+                  No hay aportes registrados aún. ¡Agrega el primero!
+                </div>
+              )}
             </div>
           </div>
-
-        </>
+        </div>
       )}
-
-      {/* =============================================
-         MODAL NUEVO GASTO
-      ============================================= */}
-      {modalGasto && (
-        <>
-          <div className="modal-overlay" onClick={() => setModalGasto(false)}></div>
-
-          <div className="modal">
-            <div className="modal-header">
-              <h2>Nuevo Gasto</h2>
-              <button className="modal-close" onClick={() => setModalGasto(false)}>
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="modal-body">
-
-              <label>Nombre</label>
-              <input
-                className="form-input"
-                value={nuevoGasto.nombre}
-                onChange={e => setNuevoGasto({ ...nuevoGasto, nombre: e.target.value })}
-              />
-
-              <label>Monto</label>
-              <input
-                className="form-input"
-                type="number"
-                value={nuevoGasto.monto}
-                onChange={e => setNuevoGasto({ ...nuevoGasto, monto: e.target.value })}
-              />
-
-              <label>Categoría</label>
-              <select
-                className="form-input"
-                value={nuevoGasto.categoria}
-                onChange={e => setNuevoGasto({ ...nuevoGasto, categoria: e.target.value })}
-              >
-                {categorias.map(c => <option key={c}>{c}</option>)}
-              </select>
-
-              <label>Mes</label>
-              <select
-                className="form-input"
-                value={nuevoGasto.mes}
-                onChange={e => setNuevoGasto({ ...nuevoGasto, mes: e.target.value })}
-              >
-                {meses.map(m => <option key={m}>{m}</option>)}
-              </select>
-
-              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={nuevoGasto.recurrente}
-                  onChange={e => setNuevoGasto({ ...nuevoGasto, recurrente: e.target.checked })}
-                />
-                Recurrente
-              </label>
-
-            </div>
-
-            <div className="modal-footer">
-              <button className="btn-cancel" onClick={() => setModalGasto(false)}>Cancelar</button>
-
-              <button className="btn-add" onClick={guardarNuevoGasto}>
-                <Save size={16} /> Guardar
-              </button>
-            </div>
-
-          </div>
-        </>
-      )}
-
     </div>
   );
 };
