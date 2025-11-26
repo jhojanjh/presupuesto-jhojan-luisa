@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 // CAMBIA ESTA URL CUANDO SUBAS EL BACKEND
-const API_URL = 'http://localhost:4000/api/budget/main';
+const API_URL = 'https://budget-api-dt5y.onrender.com/api/budget/main';
 
 const BudgetTracker = () => {
   const [gastos, setGastos] = useState([]);
