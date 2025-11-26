@@ -112,7 +112,7 @@ const BudgetTracker = () => {
         const gastosServidor = Array.isArray(data.gastos) ? data.gastos : [];
         const gastosFinales = gastosServidor.length > 0 ? gastosServidor : GASTOS_INICIALES;
         
-        // 🔴 CORREGIR: Asegurar que todos los gastos tengan pagado como booleano
+        // Asegurar que todos los gastos tengan pagado como booleano
         const gastosCorregidos = gastosFinales.map(gasto => ({
           ...gasto,
           pagado: Boolean(gasto.pagado)
@@ -125,7 +125,7 @@ const BudgetTracker = () => {
         console.error(err);
         setError('No se pudieron cargar los datos del servidor.');
         
-        // 🔴 CORREGIR: Asegurar estado booleano en gastos iniciales
+        // Asegurar estado booleano en gastos iniciales
         const gastosInicialesCorregidos = GASTOS_INICIALES.map(gasto => ({
           ...gasto,
           pagado: false // Todos deben empezar como no pagados
@@ -140,7 +140,7 @@ const BudgetTracker = () => {
     fetchBudget();
   }, []);
 
-  // ================== GUARDADO AUTOMÁTICO SIMPLIFICADO ==================
+  // ================== GUARDADO AUTOMÁTICO ==================
   useEffect(() => {
     if (cargando) return;
 
@@ -155,7 +155,7 @@ const BudgetTracker = () => {
         const datosAGuardar = {
           gastos: gastos.map(g => ({
             ...g,
-            pagado: Boolean(g.pagado) // 🔴 FORZAR BOOLEANO
+            pagado: Boolean(g.pagado)
           })),
           aportes: aportes.map(a => ({
             ...a
@@ -198,7 +198,7 @@ const BudgetTracker = () => {
 
   // ================== CÁLCULOS CORREGIDOS ==================
   const calculos = useMemo(() => {
-    // 🔴 CORREGIR: Filtrar correctamente los gastos pagados
+    // 🔴 CORREGIR: Filtrar SOLO los gastos que están marcados como PAGADOS (true)
     const gastosPagadosFiltrados = gastos.filter(gasto => gasto.pagado === true);
     
     const totalGastos = gastos.reduce((sum, g) => sum + Number(g.monto), 0);
@@ -227,14 +227,15 @@ const BudgetTracker = () => {
       return acc;
     }, {});
 
-    // 🔴 DEBUG: Verificar cálculos en consola
+    // DEBUG: Verificar cálculos en consola
     console.log('🔍 DEBUG CÁLCULOS:', {
       totalGastos,
       gastosPagados,
       totalAportes,
       totalGastosCount: gastos.length,
       gastosPagadosCount: gastosPagadosFiltrados.length,
-      gastosNoPagadosCount: gastos.filter(g => !g.pagado).length
+      gastosNoPagadosCount: gastos.filter(g => !g.pagado).length,
+      gastosConEstado: gastos.map(g => ({ nombre: g.nombre, pagado: g.pagado }))
     });
 
     return {
@@ -266,7 +267,7 @@ const BudgetTracker = () => {
       prev.map((g) => 
         g.id === id ? { 
           ...g, 
-          pagado: !g.pagado
+          pagado: !g.pagado // 🔴 TOGGLE SIMPLE Y CONSISTENTE
         } : g
       )
     );
@@ -405,7 +406,7 @@ const BudgetTracker = () => {
   const categorias = ['Arriendo', 'Servicios', 'Transporte', 'Tarjetas', 'Mercado', 'Moto'];
   const meses = ['Diciembre', 'Enero', 'Febrero'];
 
-  // 🔴 CORREGIR: Calcular porcentaje correctamente
+  // Calcular porcentaje correctamente
   const porcentajePagado = calculos.totalGastos > 0 
     ? ((calculos.gastosPagados / calculos.totalGastos) * 100) 
     : 0;
@@ -668,7 +669,7 @@ const BudgetTracker = () => {
             </div>
           </div>
 
-          {/* LISTA DE GASTOS */}
+          {/* LISTA DE GASTOS - ESTADO CONSISTENTE */}
           <div className="expense-list">
             {gastosFiltrados.map((gasto) => (
               <div className={`expense-item ${gasto.pagado ? 'paid' : ''} fade-in`} key={gasto.id}>
@@ -690,11 +691,34 @@ const BudgetTracker = () => {
                 <div className="expense-actions">
                   <span className="expense-amount">{formatMoney(gasto.monto)}</span>
 
+                  {/* 🔴 BOTÓN CORREGIDO - ESTADO CONSISTENTE */}
                   <button
-                    className={gasto.pagado ? 'btn-mark-unpaid' : 'btn-mark-paid'}
+                    className={gasto.pagado ? 'btn-mark-paid' : 'btn-mark-unpaid'}
                     onClick={() => togglePago(gasto.id)}
+                    style={{
+                      backgroundColor: gasto.pagado ? '#10b981' : '#ef4444',
+                      color: 'white',
+                      border: 'none',
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
                   >
-                    {gasto.pagado ? '❌ No pagado' : '✅ Pagado'}
+                    {gasto.pagado ? (
+                      <>
+                        <Check size={14} />
+                        Pagado
+                      </>
+                    ) : (
+                      <>
+                        <X size={14} />
+                        No pagado
+                      </>
+                    )}
                   </button>
 
                   <button className="btn-edit">
