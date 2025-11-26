@@ -89,8 +89,7 @@ const BudgetTracker = () => {
   const [error, setError] = useState(null);
   const [modoOscuro, setModoOscuro] = useState(true);
 
-  // 🔴 REFS PARA EVITAR RACE CONDITIONS
-  const datosGuardadosRef = useRef({ gastos: [], aportes: [] });
+  // Refs para controlar el estado
   const timeoutRef = useRef(null);
 
   useEffect(() => {
@@ -116,23 +115,26 @@ const BudgetTracker = () => {
         const gastosServidor = Array.isArray(data.gastos) ? data.gastos : [];
         const gastosFinales = gastosServidor.length > 0 ? gastosServidor : GASTOS_INICIALES;
         
-        setGastos(gastosFinales);
+        // 🔴 CORREGIR: Asegurar que todos los gastos tengan pagado como booleano
+        const gastosCorregidos = gastosFinales.map(gasto => ({
+          ...gasto,
+          pagado: Boolean(gasto.pagado)
+        }));
+
+        setGastos(gastosCorregidos);
         setAportes(data.aportes || []);
-        
-        // 🔴 ACTUALIZAR REFS CON LOS DATOS INICIALES
-        datosGuardadosRef.current = {
-          gastos: gastosFinales,
-          aportes: data.aportes || []
-        };
 
       } catch (err) {
         console.error(err);
         setError('No se pudieron cargar los datos del servidor.');
-        setGastos(GASTOS_INICIALES);
-        datosGuardadosRef.current = {
-          gastos: GASTOS_INICIALES,
-          aportes: []
-        };
+        
+        // 🔴 CORREGIR: Asegurar estado booleano en gastos iniciales
+        const gastosInicialesCorregidos = GASTOS_INICIALES.map(gasto => ({
+          ...gasto,
+          pagado: false // Todos deben empezar como no pagados
+        }));
+        
+        setGastos(gastosInicialesCorregidos);
       } finally {
         setCargando(false);
       }
@@ -143,13 +145,7 @@ const BudgetTracker = () => {
 
   // ================== GUARDADO AUTOMÁTICO SIMPLIFICADO ==================
   useEffect(() => {
-    // 🔴 SOLO GUARDAR SI HAY CAMBIOS REALES
-    const hayCambiosEnGastos = JSON.stringify(gastos) !== JSON.stringify(datosGuardadosRef.current.gastos);
-    const hayCambiosEnAportes = JSON.stringify(aportes) !== JSON.stringify(datosGuardadosRef.current.aportes);
-
-    if (!hayCambiosEnGastos && !hayCambiosEnAportes) {
-      return;
-    }
+    if (cargando) return;
 
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
@@ -162,12 +158,10 @@ const BudgetTracker = () => {
         const datosAGuardar = {
           gastos: gastos.map(g => ({
             ...g,
-            // 🔴 ASEGURAR QUE pagado SEA BOOLEANO
-            pagado: Boolean(g.pagado)
+            pagado: Boolean(g.pagado) // 🔴 FORZAR BOOLEANO
           })),
           aportes: aportes.map(a => ({
-            ...a,
-            monto: Number(a.monto)
+            ...a
           })),
           ultimaActualizacion: new Date().toISOString()
         };
@@ -180,12 +174,6 @@ const BudgetTracker = () => {
 
         if (!response.ok) throw new Error('Error en servidor');
         
-        // 🔴 ACTUALIZAR REFS CON LOS DATOS GUARDADOS
-        datosGuardadosRef.current = {
-          gastos: [...gastos],
-          aportes: [...aportes]
-        };
-
         console.log('✅ Datos guardados correctamente');
         
       } catch (err) {
@@ -194,14 +182,14 @@ const BudgetTracker = () => {
       } finally {
         setGuardando(false);
       }
-    }, 1500); // Aumentar debounce para evitar guardados muy seguidos
+    }, 2000);
 
     return () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [gastos, aportes]);
+  }, [gastos, aportes, cargando]);
 
   // ================== MANEJO DE ERRORES ==================
   useEffect(() => {
@@ -211,22 +199,23 @@ const BudgetTracker = () => {
     }
   }, [error]);
 
-  // ================== CÁLCULOS ==================
+  // ================== CÁLCULOS CORREGIDOS ==================
   const calculos = useMemo(() => {
-    const totalGastos = gastos.reduce((sum, g) => sum + g.monto, 0);
-    const gastosPagados = gastos
-      .filter((g) => g.pagado === true) // 🔴 FORZAR BOOLEANO
-      .reduce((sum, g) => sum + g.monto, 0);
+    // 🔴 CORREGIR: Filtrar correctamente los gastos pagados
+    const gastosPagadosFiltrados = gastos.filter(gasto => gasto.pagado === true);
+    
+    const totalGastos = gastos.reduce((sum, g) => sum + Number(g.monto), 0);
+    const gastosPagados = gastosPagadosFiltrados.reduce((sum, g) => sum + Number(g.monto), 0);
 
-    const totalAportes = aportes.reduce((sum, a) => sum + a.monto, 0);
+    const totalAportes = aportes.reduce((sum, a) => sum + Number(a.monto), 0);
 
     const aportesPorPersona = {
       Jhojan: aportes
         .filter((a) => a.persona === 'Jhojan')
-        .reduce((s, a) => s + a.monto, 0),
+        .reduce((s, a) => s + Number(a.monto), 0),
       'Luisa ❤️': aportes
         .filter((a) => a.persona === 'Luisa ❤️')
-        .reduce((s, a) => s + a.monto, 0)
+        .reduce((s, a) => s + Number(a.monto), 0)
     };
 
     const mitadGastos = totalGastos / 2;
@@ -237,9 +226,19 @@ const BudgetTracker = () => {
     };
 
     const gastosPorCategoria = gastos.reduce((acc, g) => {
-      acc[g.categoria] = (acc[g.categoria] || 0) + g.monto;
+      acc[g.categoria] = (acc[g.categoria] || 0) + Number(g.monto);
       return acc;
     }, {});
+
+    // 🔴 DEBUG: Verificar cálculos en consola
+    console.log('🔍 DEBUG CÁLCULOS:', {
+      totalGastos,
+      gastosPagados,
+      totalAportes,
+      totalGastosCount: gastos.length,
+      gastosPagadosCount: gastosPagadosFiltrados.length,
+      gastosNoPagadosCount: gastos.filter(g => !g.pagado).length
+    });
 
     return {
       totalGastos,
@@ -254,7 +253,10 @@ const BudgetTracker = () => {
   }, [gastos, aportes]);
 
   // ================== HELPERS ==================
-  const formatMoney = (num) => '$' + num.toLocaleString('es-CO');
+  const formatMoney = (num) => {
+    if (isNaN(num)) return '$0';
+    return '$' + Math.round(num).toLocaleString('es-CO');
+  };
 
   const mostrarExito = (mensaje) => {
     setMensajeExito(mensaje);
@@ -267,7 +269,7 @@ const BudgetTracker = () => {
       prev.map((g) => 
         g.id === id ? { 
           ...g, 
-          pagado: !g.pagado // 🔴 TOGGLE SIMPLE
+          pagado: !g.pagado
         } : g
       )
     );
@@ -284,7 +286,6 @@ const BudgetTracker = () => {
     setEditandoGasto(gasto.id);
     setGastoEditado({ 
       ...gasto,
-      // 🔴 ASEGURAR TIPOS CORRECTOS EN EDICIÓN
       monto: gasto.monto.toString()
     });
   };
@@ -313,7 +314,6 @@ const BudgetTracker = () => {
           ? { 
               ...gastoEditado, 
               monto,
-              // 🔴 MANTENER EL ESTADO PAGADO ORIGINAL
               pagado: Boolean(gastoEditado.pagado)
             }
           : g
@@ -337,11 +337,11 @@ const BudgetTracker = () => {
   const agregarGasto = () => {
     const monto = parseFloat(nuevoGasto.monto);
     if (!nuevoGasto.nombre.trim()) {
-      alert('Por favor escribe un nombre para el gasto');
+      setError('Por favor escribe un nombre para el gasto');
       return;
     }
-    if (!monto || monto <= 0) {
-      alert('Ingresa un monto válido mayor a 0');
+    if (isNaN(monto) || monto <= 0) {
+      setError('Ingresa un monto válido mayor a 0');
       return;
     }
 
@@ -351,7 +351,7 @@ const BudgetTracker = () => {
       monto,
       categoria: nuevoGasto.categoria,
       mes: nuevoGasto.mes,
-      recurrente: nuevoGasto.recurrente,
+      recurrente: Boolean(nuevoGasto.recurrente),
       pagado: false, // 🔴 SIEMPRE FALSE AL CREAR
       fechaCreacion: new Date().toISOString()
     };
@@ -365,14 +365,15 @@ const BudgetTracker = () => {
       recurrente: true
     });
     setMostrarModalGasto(false);
+    setError(null);
     mostrarExito('✅ Gasto agregado');
   };
 
   // ================== APORTES ==================
   const agregarAporte = () => {
     const monto = parseFloat(nuevoAporte.monto);
-    if (!monto || monto <= 0) {
-      alert('Ingresa un monto válido');
+    if (isNaN(monto) || monto <= 0) {
+      setError('Ingresa un monto válido mayor a 0');
       return;
     }
 
@@ -388,6 +389,7 @@ const BudgetTracker = () => {
     ]);
 
     setNuevoAporte({ persona: 'Jhojan', monto: '', mes: 'Diciembre' });
+    setError(null);
     mostrarExito('✅ Aporte agregado');
   };
 
@@ -407,7 +409,6 @@ const BudgetTracker = () => {
     ) {
       setGastos([]);
       setAportes([]);
-      datosGuardadosRef.current = { gastos: [], aportes: [] };
       mostrarExito('🧹 Todos los datos fueron limpiados');
     }
   };
@@ -441,7 +442,9 @@ const BudgetTracker = () => {
     Arriendo: <Home size={18} />,
     Servicios: <Wifi size={18} />,
     Transporte: <Car size={18} />,
-    Tarjetas: <CreditCard size={18} />
+    Tarjetas: <CreditCard size={18} />,
+    Mercado: <TrendingUp size={18} />,
+    Moto: <Car size={18} />
   };
 
   const categoriaColors = {
@@ -456,158 +459,10 @@ const BudgetTracker = () => {
   const categorias = ['Arriendo', 'Servicios', 'Transporte', 'Tarjetas', 'Mercado', 'Moto'];
   const meses = ['Diciembre', 'Enero', 'Febrero'];
 
-  const porcentajePagado =
-    calculos.totalGastos > 0
-      ? ((calculos.gastosPagados / calculos.totalGastos) * 100).toFixed(1)
-      : null;
-
-  // ================== RENDER ITEM DE GASTO ==================
-  const renderExpenseItem = (gasto) => {
-    const isEditing = editandoGasto === gasto.id;
-    
-    if (isEditing) {
-      return (
-        <div style={{ width: '100%' }}>
-          <div className="edit-form-grid">
-            <div>
-              <label className="edit-form-label">Nombre</label>
-              <input
-                className="form-input"
-                type="text"
-                value={gastoEditado.nombre || ''}
-                onChange={(e) =>
-                  handleEditChange('nombre', e.target.value)
-                }
-              />
-            </div>
-            <div>
-              <label className="edit-form-label">Monto</label>
-              <input
-                className="form-input"
-                type="number"
-                value={gastoEditado.monto || ''}
-                onChange={(e) =>
-                  handleEditChange('monto', e.target.value)
-                }
-              />
-            </div>
-            <div>
-              <label className="edit-form-label">Categoría</label>
-              <select
-                className="form-input"
-                value={gastoEditado.categoria || ''}
-                onChange={(e) =>
-                  handleEditChange('categoria', e.target.value)
-                }
-              >
-                {categorias.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="edit-form-label">Mes</label>
-              <select
-                className="form-input"
-                value={gastoEditado.mes || ''}
-                onChange={(e) =>
-                  handleEditChange('mes', e.target.value)
-                }
-              >
-                {meses.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <button className="btn-add" onClick={guardarEdicion}>
-              <Save size={14} />
-              Guardar
-            </button>
-            <button className="btn-cancel" onClick={cancelarEdicion}>
-              <X size={14} />
-              Cancelar
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <>
-        <div className="expense-info">
-          <div className={`expense-category ${categoriaColors[gasto.categoria] || 'blue'}`} />
-          <div className="expense-details">
-            <h4>{gasto.nombre}</h4>
-            <div className="expense-meta">
-              <span>{gasto.categoria}</span>
-              <span>•</span>
-              <span>{gasto.mes}</span>
-              {gasto.recurrente && (
-                <span className="expense-recurrent">
-                  🔄 Recurrente
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="expense-actions">
-          <span className="expense-amount">
-            {formatMoney(gasto.monto)}
-          </span>
-
-          {/* BOTÓN TOGGLE - ESTADO CLARO */}
-          <button
-            className={gasto.pagado ? 'btn-mark-unpaid' : 'btn-mark-paid'}
-            onClick={() => togglePago(gasto.id)}
-            style={{
-              backgroundColor: gasto.pagado ? '#ef4444' : '#10b981',
-              color: 'white',
-              border: 'none',
-              padding: '8px 12px',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-          >
-            {gasto.pagado ? (
-              <>
-                <X size={14} />
-                No pagado
-              </>
-            ) : (
-              <>
-                <Check size={14} />
-                Pagado
-              </>
-            )}
-          </button>
-
-          <button
-            className="btn-edit"
-            onClick={() => iniciarEdicion(gasto)}
-          >
-            <Edit size={14} />
-          </button>
-
-          <button
-            className="btn-delete"
-            onClick={() => eliminarGasto(gasto.id)}
-          >
-            <Trash2 size={14} />
-          </button>
-        </div>
-      </>
-    );
-  };
+  // 🔴 CORREGIR: Calcular porcentaje correctamente
+  const porcentajePagado = calculos.totalGastos > 0 
+    ? ((calculos.gastosPagados / calculos.totalGastos) * 100) 
+    : 0;
 
   // ================== LOADING ==================
   if (cargando) {
@@ -622,38 +477,20 @@ const BudgetTracker = () => {
     <div className={`app-container ${modoOscuro ? 'theme-dark' : 'theme-light'}`}>
       {/* HEADER */}
       <div className="header">
-        <div
-          className="header-top-row"
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: '1rem'
-          }}
-        >
+        <div className="header-top-row">
           <div>
             <h1>Control de Presupuesto Compartido</h1>
             <p className="header-subtitle">Diciembre 2024 - Febrero 2025</p>
           </div>
 
-          <div className="header-status" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div className="header-status">
             {guardando && (
-              <span className="saving-indicator" style={{ color: '#f59e0b' }}>💾 Guardando...</span>
+              <span className="saving-indicator">💾 Guardando...</span>
             )}
             
             <button
               className="theme-toggle"
               onClick={() => setModoOscuro((prev) => !prev)}
-              style={{
-                background: 'none',
-                border: '1px solid #d1d5db',
-                padding: '8px 12px',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
             >
               {modoOscuro ? <Sun size={16} /> : <Moon size={16} />}
               <span>{modoOscuro ? 'Modo claro' : 'Modo oscuro'}</span>
@@ -665,21 +502,9 @@ const BudgetTracker = () => {
         <div className="notifications">
           {mensajeExito && <div className="message-success fade-in">✅ {mensajeExito}</div>}
           {error && (
-            <div className="message-error" style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center' 
-            }}>
+            <div className="message-error">
               <span>❌ {error}</span>
-              <button 
-                onClick={() => setError(null)}
-                style={{ 
-                  background: 'none', 
-                  border: 'none', 
-                  color: 'inherit', 
-                  cursor: 'pointer' 
-                }}
-              >
+              <button onClick={() => setError(null)}>
                 <X size={14} />
               </button>
             </div>
@@ -725,52 +550,69 @@ const BudgetTracker = () => {
       {vistaActual === 'dashboard' && (
         <>
           <div className="stats-grid">
-            {[
-              {
-                title: 'Total Gastos',
-                value: calculos.totalGastos,
-                subtitle: '3 meses',
-                icon: DollarSign,
-                color: 'bg-blue-500'
-              },
-              {
-                title: 'Total Aportado',
-                value: calculos.totalAportes,
-                subtitle: 'Por ambos',
-                icon: TrendingUp,
-                color: 'bg-green-500'
-              },
-              {
-                title: 'Pagado',
-                value: calculos.gastosPagados,
-                subtitle:
-                  porcentajePagado !== null
-                    ? `${porcentajePagado}% completado`
-                    : 'Sin gastos registrados',
-                icon: Check,
-                color: 'bg-emerald-500'
-              },
-              {
-                title: 'Saldo',
-                value: calculos.saldoDisponible,
-                subtitle: 'Disponible',
-                icon: PieChart,
-                color: 'bg-purple-500'
-              }
-            ].map((card, index) => (
-              <div key={index} className="card fade-in">
-                <div className="stat-item">
-                  <div className="stat-header">
-                    <span className="stat-title">{card.title}</span>
-                    <div className={`stat-icon ${card.color}`}>
-                      <card.icon className="text-white" size={20} />
-                    </div>
+            <div className="card fade-in">
+              <div className="stat-item">
+                <div className="stat-header">
+                  <span className="stat-title">Total Gastos</span>
+                  <div className="stat-icon bg-blue-500">
+                    <DollarSign className="text-white" size={20} />
                   </div>
-                  <div className="stat-value">{formatMoney(card.value)}</div>
-                  <div className="stat-subtitle">{card.subtitle}</div>
+                </div>
+                <div className="stat-value">{formatMoney(calculos.totalGastos)}</div>
+                <div className="stat-subtitle">3 meses</div>
+              </div>
+            </div>
+
+            <div className="card fade-in">
+              <div className="stat-item">
+                <div className="stat-header">
+                  <span className="stat-title">Total Aportado</span>
+                  <div className="stat-icon bg-green-500">
+                    <TrendingUp className="text-white" size={20} />
+                  </div>
+                </div>
+                <div className="stat-value">{formatMoney(calculos.totalAportes)}</div>
+                <div className="stat-subtitle">Por ambos</div>
+              </div>
+            </div>
+
+            <div className="card fade-in">
+              <div className="stat-item">
+                <div className="stat-header">
+                  <span className="stat-title">Pagado</span>
+                  <div className="stat-icon bg-emerald-500">
+                    <Check className="text-white" size={20} />
+                  </div>
+                </div>
+                <div className="stat-value">{formatMoney(calculos.gastosPagados)}</div>
+                <div className="stat-subtitle">
+                  {calculos.totalGastos > 0 ? (
+                    <>
+                      {porcentajePagado.toFixed(1)}% completado
+                      <br />
+                      <small style={{ fontSize: '12px', opacity: 0.7 }}>
+                        {gastos.filter(g => g.pagado).length} de {gastos.length} gastos
+                      </small>
+                    </>
+                  ) : (
+                    'Sin gastos registrados'
+                  )}
                 </div>
               </div>
-            ))}
+            </div>
+
+            <div className="card fade-in">
+              <div className="stat-item">
+                <div className="stat-header">
+                  <span className="stat-title">Saldo</span>
+                  <div className="stat-icon bg-purple-500">
+                    <PieChart className="text-white" size={20} />
+                  </div>
+                </div>
+                <div className="stat-value">{formatMoney(calculos.saldoDisponible)}</div>
+                <div className="stat-subtitle">Disponible</div>
+              </div>
+            </div>
           </div>
 
           {/* BALANCE POR PERSONA */}
@@ -778,11 +620,7 @@ const BudgetTracker = () => {
             {['Jhojan', 'Luisa ❤️'].map((persona) => (
               <div key={persona} className="card fade-in">
                 <div className="balance-header">
-                  <div
-                    className={`balance-avatar ${
-                      persona === 'Jhojan' ? 'purple' : 'pink'
-                    }`}
-                  >
+                  <div className={`balance-avatar ${persona === 'Jhojan' ? 'purple' : 'pink'}`}>
                     <Users className="text-white" size={24} />
                   </div>
                   <div className="balance-info">
@@ -807,13 +645,7 @@ const BudgetTracker = () => {
                   <div className="balance-total">
                     <div className="balance-total-row">
                       <span className="balance-total-label">Balance:</span>
-                      <span
-                        className={`balance-total-amount ${
-                          calculos.balance[persona] >= 0
-                            ? 'positive'
-                            : 'negative'
-                        }`}
-                      >
+                      <span className={`balance-total-amount ${calculos.balance[persona] >= 0 ? 'positive' : 'negative'}`}>
                         {formatMoney(Math.abs(calculos.balance[persona] || 0))}
                       </span>
                     </div>
@@ -832,53 +664,33 @@ const BudgetTracker = () => {
 
           {/* GASTOS POR CATEGORÍA */}
           <div className="card fade-in">
-            <h3
-              style={{
-                fontSize: '1.25rem',
-                fontWeight: '600',
-                marginBottom: '1.5rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
+            <h3>
               <PieChart size={24} />
               Gastos por Categoría
             </h3>
             <div>
-              {Object.entries(calculos.gastosPorCategoria).map(
-                ([categoria, monto]) => {
-                  const porcentaje = calculos.totalGastos
-                    ? ((monto / calculos.totalGastos) * 100).toFixed(1)
-                    : 0;
-                  return (
-                    <div key={categoria} className="category-item fade-in">
-                      <div className="category-header">
-                        <div className="category-info">
-                          <div style={{ color: '#9ca3af' }}>
-                            {categoriaIcons[categoria]}
-                          </div>
-                          <span className="category-name">{categoria}</span>
+              {Object.entries(calculos.gastosPorCategoria).map(([categoria, monto]) => {
+                const porcentaje = calculos.totalGastos ? ((monto / calculos.totalGastos) * 100) : 0;
+                return (
+                  <div key={categoria} className="category-item fade-in">
+                    <div className="category-header">
+                      <div className="category-info">
+                        <div style={{ color: '#9ca3af' }}>
+                          {categoriaIcons[categoria]}
                         </div>
-                        <div className="category-amount">
-                          <div className="category-value">
-                            {formatMoney(monto)}
-                          </div>
-                          <div className="category-percentage">
-                            {porcentaje}%
-                          </div>
-                        </div>
+                        <span className="category-name">{categoria}</span>
                       </div>
-                      <div className="progress-bar">
-                        <div
-                          className="progress-fill"
-                          style={{ width: `${porcentaje}%` }}
-                        />
+                      <div className="category-amount">
+                        <div className="category-value">{formatMoney(monto)}</div>
+                        <div className="category-percentage">{porcentaje.toFixed(1)}%</div>
                       </div>
                     </div>
-                  );
-                }
-              )}
+                    <div className="progress-bar">
+                      <div className="progress-fill" style={{ width: `${porcentaje}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </>
@@ -895,9 +707,7 @@ const BudgetTracker = () => {
                 {['Todos', ...meses].map((mes) => (
                   <button
                     key={mes}
-                    className={`filter-btn ${
-                      mesSeleccionado === mes ? 'active' : ''
-                    }`}
+                    className={`filter-btn ${mesSeleccionado === mes ? 'active' : ''}`}
                     onClick={() => setMesSeleccionado(mes)}
                   >
                     {mes}
@@ -905,11 +715,7 @@ const BudgetTracker = () => {
                 ))}
               </div>
               <div style={{ flex: 1 }} />
-              <button
-                className="btn-add"
-                style={{ minWidth: 180 }}
-                onClick={() => setMostrarModalGasto(true)}
-              >
+              <button className="btn-add" onClick={() => setMostrarModalGasto(true)}>
                 <Plus size={18} />
                 Nuevo gasto
               </button>
@@ -919,22 +725,45 @@ const BudgetTracker = () => {
           {/* LISTA DE GASTOS */}
           <div className="expense-list">
             {gastosFiltrados.map((gasto) => (
-              <div
-                className={`expense-item ${gasto.pagado ? 'paid' : ''} fade-in`}
-                key={gasto.id}
-                style={{
-                  opacity: gasto.pagado ? 0.7 : 1,
-                  borderLeft: gasto.pagado ? '4px solid #10b981' : '4px solid #6b7280'
-                }}
-              >
-                {renderExpenseItem(gasto)}
+              <div className={`expense-item ${gasto.pagado ? 'paid' : ''} fade-in`} key={gasto.id}>
+                <div className="expense-info">
+                  <div className={`expense-category ${categoriaColors[gasto.categoria] || 'blue'}`} />
+                  <div className="expense-details">
+                    <h4>{gasto.nombre}</h4>
+                    <div className="expense-meta">
+                      <span>{gasto.categoria}</span>
+                      <span>•</span>
+                      <span>{gasto.mes}</span>
+                      {gasto.recurrente && (
+                        <span className="expense-recurrent">🔄 Recurrente</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="expense-actions">
+                  <span className="expense-amount">{formatMoney(gasto.monto)}</span>
+
+                  <button
+                    className={gasto.pagado ? 'btn-mark-unpaid' : 'btn-mark-paid'}
+                    onClick={() => togglePago(gasto.id)}
+                  >
+                    {gasto.pagado ? '❌ No pagado' : '✅ Pagado'}
+                  </button>
+
+                  <button className="btn-edit" onClick={() => iniciarEdicion(gasto)}>
+                    <Edit size={14} />
+                  </button>
+
+                  <button className="btn-delete" onClick={() => eliminarGasto(gasto.id)}>
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
             ))}
 
             {gastosFiltrados.length === 0 && (
-              <div className="empty-state">
-                No hay gastos registrados en este mes.
-              </div>
+              <div className="empty-state">No hay gastos registrados en este mes.</div>
             )}
           </div>
         </>
@@ -945,16 +774,7 @@ const BudgetTracker = () => {
         <>
           {/* FORM APORTES */}
           <div className="card contribution-form fade-in">
-            <h3
-              style={{
-                fontSize: '1.25rem',
-                fontWeight: '600',
-                marginBottom: '1rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
+            <h3>
               <Plus size={24} style={{ color: '#4ade80' }} />
               Registrar Nuevo Aporte
             </h3>
@@ -962,9 +782,7 @@ const BudgetTracker = () => {
               <select
                 className="form-input"
                 value={nuevoAporte.persona}
-                onChange={(e) =>
-                  setNuevoAporte({ ...nuevoAporte, persona: e.target.value })
-                }
+                onChange={(e) => setNuevoAporte({ ...nuevoAporte, persona: e.target.value })}
               >
                 <option>Jhojan</option>
                 <option>Luisa ❤️</option>
@@ -974,16 +792,12 @@ const BudgetTracker = () => {
                 type="number"
                 placeholder="Monto"
                 value={nuevoAporte.monto}
-                onChange={(e) =>
-                  setNuevoAporte({ ...nuevoAporte, monto: e.target.value })
-                }
+                onChange={(e) => setNuevoAporte({ ...nuevoAporte, monto: e.target.value })}
               />
               <select
                 className="form-input"
                 value={nuevoAporte.mes}
-                onChange={(e) =>
-                  setNuevoAporte({ ...nuevoAporte, mes: e.target.value })
-                }
+                onChange={(e) => setNuevoAporte({ ...nuevoAporte, mes: e.target.value })}
               >
                 {meses.map((m) => (
                   <option key={m}>{m}</option>
@@ -998,20 +812,12 @@ const BudgetTracker = () => {
 
           {/* HISTORIAL APORTES */}
           <div className="card fade-in">
-            <h3
-              style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1rem' }}
-            >
-              Historial de Aportes
-            </h3>
+            <h3>Historial de Aportes</h3>
             <div className="contribution-list">
               {aportes.map((a) => (
                 <div className="contribution-item fade-in" key={a.id}>
                   <div className="contribution-person">
-                    <div
-                      className={`person-avatar ${
-                        a.persona === 'Jhojan' ? 'purple' : 'pink'
-                      }`}
-                    >
+                    <div className={`person-avatar ${a.persona === 'Jhojan' ? 'purple' : 'pink'}`}>
                       <Users size={24} className="text-white" />
                     </div>
                     <div className="person-info">
@@ -1020,22 +826,15 @@ const BudgetTracker = () => {
                     </div>
                   </div>
                   <div className="contribution-actions">
-                    <span className="contribution-amount">
-                      {formatMoney(a.monto)}
-                    </span>
-                    <button
-                      className="btn-contribution-delete"
-                      onClick={() => eliminarAporte(a.id)}
-                    >
+                    <span className="contribution-amount">{formatMoney(a.monto)}</span>
+                    <button className="btn-contribution-delete" onClick={() => eliminarAporte(a.id)}>
                       <Trash2 size={16} />
                     </button>
                   </div>
                 </div>
               ))}
               {aportes.length === 0 && (
-                <div className="empty-state">
-                  No hay aportes registrados todavía.
-                </div>
+                <div className="empty-state">No hay aportes registrados todavía.</div>
               )}
             </div>
           </div>
@@ -1044,20 +843,11 @@ const BudgetTracker = () => {
 
       {/* ================== MODAL NUEVO GASTO ================== */}
       {mostrarModalGasto && (
-        <div
-          className="modal-overlay"
-          onClick={() => setMostrarModalGasto(false)}
-        >
-          <div
-            className="modal-card fade-in"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="modal-overlay" onClick={() => setMostrarModalGasto(false)}>
+          <div className="modal-card fade-in" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Nuevo gasto</h3>
-              <button
-                className="modal-close"
-                onClick={() => setMostrarModalGasto(false)}
-              >
+              <button className="modal-close" onClick={() => setMostrarModalGasto(false)}>
                 <X size={18} />
               </button>
             </div>
@@ -1068,25 +858,19 @@ const BudgetTracker = () => {
                   type="text"
                   placeholder="Nombre del gasto"
                   value={nuevoGasto.nombre}
-                  onChange={(e) =>
-                    setNuevoGasto({ ...nuevoGasto, nombre: e.target.value })
-                  }
+                  onChange={(e) => setNuevoGasto({ ...nuevoGasto, nombre: e.target.value })}
                   className="form-input"
                 />
                 <input
                   type="number"
                   placeholder="Monto"
                   value={nuevoGasto.monto}
-                  onChange={(e) =>
-                    setNuevoGasto({ ...nuevoGasto, monto: e.target.value })
-                  }
+                  onChange={(e) => setNuevoGasto({ ...nuevoGasto, monto: e.target.value })}
                   className="form-input"
                 />
                 <select
                   value={nuevoGasto.categoria}
-                  onChange={(e) =>
-                    setNuevoGasto({ ...nuevoGasto, categoria: e.target.value })
-                  }
+                  onChange={(e) => setNuevoGasto({ ...nuevoGasto, categoria: e.target.value })}
                   className="form-input"
                 >
                   {categorias.map((c) => (
@@ -1095,9 +879,7 @@ const BudgetTracker = () => {
                 </select>
                 <select
                   value={nuevoGasto.mes}
-                  onChange={(e) =>
-                    setNuevoGasto({ ...nuevoGasto, mes: e.target.value })
-                  }
+                  onChange={(e) => setNuevoGasto({ ...nuevoGasto, mes: e.target.value })}
                   className="form-input"
                 >
                   {meses.map((m) => (
@@ -1105,23 +887,11 @@ const BudgetTracker = () => {
                   ))}
                 </select>
 
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    fontSize: '0.9rem'
-                  }}
-                >
+                <label>
                   <input
                     type="checkbox"
                     checked={nuevoGasto.recurrente}
-                    onChange={(e) =>
-                      setNuevoGasto({
-                        ...nuevoGasto,
-                        recurrente: e.target.checked
-                      })
-                    }
+                    onChange={(e) => setNuevoGasto({ ...nuevoGasto, recurrente: e.target.checked })}
                   />
                   Gasto recurrente
                 </label>
@@ -1129,10 +899,7 @@ const BudgetTracker = () => {
             </div>
 
             <div className="modal-footer">
-              <button
-                className="btn-cancel"
-                onClick={() => setMostrarModalGasto(false)}
-              >
+              <button className="btn-cancel" onClick={() => setMostrarModalGasto(false)}>
                 Cancelar
               </button>
               <button className="btn-add" onClick={agregarGasto}>
