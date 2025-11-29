@@ -1,4 +1,10 @@
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import React, {
+  useState,
+  useMemo,
+  useEffect,
+  useCallback,
+  useRef
+} from 'react';
 import {
   DollarSign,
   Users,
@@ -15,47 +21,18 @@ import {
   BarChart3,
   X,
   Edit,
+  Save,
   Sun,
   Moon
 } from 'lucide-react';
 
 const API_URL = 'https://budget-api-dt5y.onrender.com/api/budget/main';
 
-// ======= GASTOS INICIALES =======
-const GASTOS_INICIALES = [
-  { id: 1, nombre: 'Arriendo', categoria: 'Arriendo', monto: 720000, mes: 'Diciembre', pagado: false, recurrente: true },
-  { id: 2, nombre: 'Arriendo', categoria: 'Arriendo', monto: 720000, mes: 'Enero', pagado: false, recurrente: true },
-  { id: 3, nombre: 'Arriendo', categoria: 'Arriendo', monto: 720000, mes: 'Febrero', pagado: false, recurrente: true },
-  { id: 4, nombre: 'Internet LU', categoria: 'Servicios', monto: 100000, mes: 'Diciembre', pagado: false, recurrente: true },
-  { id: 5, nombre: 'Internet JN', categoria: 'Servicios', monto: 80000, mes: 'Diciembre', pagado: false, recurrente: true },
-  { id: 6, nombre: 'Luz', categoria: 'Servicios', monto: 380000, mes: 'Diciembre', pagado: false, recurrente: true },
-  { id: 7, nombre: 'Agua', categoria: 'Servicios', monto: 400000, mes: 'Diciembre', pagado: false, recurrente: true },
-  { id: 8, nombre: 'Celula', categoria: 'Servicios', monto: 285000, mes: 'Diciembre', pagado: false, recurrente: true },
-  { id: 9, nombre: 'Internet LU', categoria: 'Servicios', monto: 100000, mes: 'Enero', pagado: false, recurrente: true },
-  { id: 10, nombre: 'Internet JN', categoria: 'Servicios', monto: 80000, mes: 'Enero', pagado: false, recurrente: true },
-  { id: 11, nombre: 'Luz', categoria: 'Servicios', monto: 380000, mes: 'Enero', pagado: false, recurrente: true },
-  { id: 12, nombre: 'Agua', categoria: 'Servicios', monto: 400000, mes: 'Enero', pagado: false, recurrente: true },
-  { id: 13, nombre: 'Celula', categoria: 'Servicios', monto: 285000, mes: 'Enero', pagado: false, recurrente: true },
-  { id: 14, nombre: 'Internet LU', categoria: 'Servicios', monto: 100000, mes: 'Febrero', pagado: false, recurrente: true },
-  { id: 15, nombre: 'Internet JN', categoria: 'Servicios', monto: 80000, mes: 'Febrero', pagado: false, recurrente: true },
-  { id: 16, nombre: 'Luz', categoria: 'Servicios', monto: 380000, mes: 'Febrero', pagado: false, recurrente: true },
-  { id: 17, nombre: 'Agua', categoria: 'Servicios', monto: 400000, mes: 'Febrero', pagado: false, recurrente: true },
-  { id: 18, nombre: 'Celula', categoria: 'Servicios', monto: 285000, mes: 'Febrero', pagado: false, recurrente: true },
-  { id: 19, nombre: 'Mercado', categoria: 'Mercado', monto: 467000, mes: 'Diciembre', pagado: false, recurrente: true },
-  { id: 20, nombre: 'Mercado', categoria: 'Mercado', monto: 467000, mes: 'Enero', pagado: false, recurrente: true },
-  { id: 21, nombre: 'Mercado', categoria: 'Mercado', monto: 466000, mes: 'Febrero', pagado: false, recurrente: true },
-  { id: 22, nombre: 'Tarjeta de Crédito', categoria: 'Tarjetas', monto: 1580000, mes: 'Diciembre', pagado: false, unico: true },
-  { id: 23, nombre: 'ITO', categoria: 'Tarjetas', monto: 900000, mes: 'Diciembre', pagado: false, unico: true },
-  { id: 24, nombre: 'Moto - Baul', categoria: 'Moto', monto: 150000, mes: 'Diciembre', pagado: false, unico: true },
-  { id: 25, nombre: 'Moto - Aceite', categoria: 'Moto', monto: 150000, mes: 'Diciembre', pagado: false, unico: true },
-  { id: 26, nombre: 'Moto - Gasolina', categoria: 'Moto', monto: 150000, mes: 'Diciembre', pagado: false, unico: true },
-  { id: 27, nombre: 'Moto - Luces', categoria: 'Moto', monto: 100000, mes: 'Diciembre', pagado: false, unico: true },
-  { id: 28, nombre: 'Moto - Otros', categoria: 'Moto', monto: 250000, mes: 'Diciembre', pagado: false, unico: true }
-];
-
 // Utilidad para IDs únicos
 const generarIdUnico = () => {
-  return crypto.randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  return crypto.randomUUID
+    ? crypto.randomUUID()
+    : `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 };
 
 const BudgetTracker = () => {
@@ -64,6 +41,9 @@ const BudgetTracker = () => {
 
   const [vistaActual, setVistaActual] = useState('dashboard');
   const [mesSeleccionado, setMesSeleccionado] = useState('Todos');
+
+  // 🔎 Filtro para el DASHBOARD
+  const [mesDashboard, setMesDashboard] = useState('General');
 
   const [nuevoAporte, setNuevoAporte] = useState({
     persona: 'Jhojan',
@@ -84,16 +64,34 @@ const BudgetTracker = () => {
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState(null);
+
+  // Tema
   const [modoOscuro, setModoOscuro] = useState(true);
 
-  // Refs para controlar el estado
+  // Edición de gastos
+  const [gastoEditandoId, setGastoEditandoId] = useState(null);
+  const [gastoEditado, setGastoEditado] = useState({
+    nombre: '',
+    monto: '',
+    categoria: 'Arriendo',
+    mes: 'Diciembre',
+    recurrente: true
+  });
+
   const timeoutRef = useRef(null);
 
+  // Lista de meses que manejas en la app
+  const meses = ['Diciembre', 'Enero', 'Febrero'];
+  const categorias = ['Arriendo', 'Servicios', 'Transporte', 'Tarjetas', 'Mercado', 'Moto'];
+
+  // ================== TEMA CLARO / OSCURO ==================
   useEffect(() => {
     if (modoOscuro) {
-      document.body.classList.remove('light-mode');
+      document.body.classList.add('dark-theme');
+      document.body.classList.remove('light-theme');
     } else {
-      document.body.classList.add('light-mode');
+      document.body.classList.add('light-theme');
+      document.body.classList.remove('dark-theme');
     }
   }, [modoOscuro]);
 
@@ -110,28 +108,20 @@ const BudgetTracker = () => {
         const data = await res.json();
 
         const gastosServidor = Array.isArray(data.gastos) ? data.gastos : [];
-        const gastosFinales = gastosServidor.length > 0 ? gastosServidor : GASTOS_INICIALES;
-        
-        // Asegurar que todos los gastos tengan pagado como booleano
-        const gastosCorregidos = gastosFinales.map(gasto => ({
+
+        const gastosCorregidos = gastosServidor.map((gasto) => ({
           ...gasto,
-          pagado: Boolean(gasto.pagado)
+          pagado: Boolean(gasto.pagado),
+          recurrente: Boolean(gasto.recurrente)
         }));
 
         setGastos(gastosCorregidos);
-        setAportes(data.aportes || []);
-
+        setAportes(Array.isArray(data.aportes) ? data.aportes : []);
       } catch (err) {
         console.error(err);
         setError('No se pudieron cargar los datos del servidor.');
-        
-        // Asegurar estado booleano en gastos iniciales
-        const gastosInicialesCorregidos = GASTOS_INICIALES.map(gasto => ({
-          ...gasto,
-          pagado: false // Todos deben empezar como no pagados
-        }));
-        
-        setGastos(gastosInicialesCorregidos);
+        setGastos([]);
+        setAportes([]);
       } finally {
         setCargando(false);
       }
@@ -151,15 +141,14 @@ const BudgetTracker = () => {
     timeoutRef.current = setTimeout(async () => {
       try {
         setGuardando(true);
-        
+
         const datosAGuardar = {
-          gastos: gastos.map(g => ({
+          gastos: gastos.map((g) => ({
             ...g,
-            pagado: Boolean(g.pagado)
+            pagado: Boolean(g.pagado),
+            recurrente: Boolean(g.recurrente)
           })),
-          aportes: aportes.map(a => ({
-            ...a
-          })),
+          aportes: aportes.map((a) => ({ ...a })),
           ultimaActualizacion: new Date().toISOString()
         };
 
@@ -170,9 +159,8 @@ const BudgetTracker = () => {
         });
 
         if (!response.ok) throw new Error('Error en servidor');
-        
+
         console.log('✅ Datos guardados correctamente');
-        
       } catch (err) {
         console.error('❌ Error guardando:', err);
         setError('No se pudieron guardar los cambios en el servidor');
@@ -196,21 +184,37 @@ const BudgetTracker = () => {
     }
   }, [error]);
 
-  // ================== CÁLCULOS CORREGIDOS ==================
+  // ================== CÁLCULOS (con filtro del Dashboard) ==================
   const calculos = useMemo(() => {
-    // 🔴 CORREGIR: Filtrar SOLO los gastos que están marcados como PAGADOS (true)
-    const gastosPagadosFiltrados = gastos.filter(gasto => gasto.pagado === true);
-    
-    const totalGastos = gastos.reduce((sum, g) => sum + Number(g.monto), 0);
-    const gastosPagados = gastosPagadosFiltrados.reduce((sum, g) => sum + Number(g.monto), 0);
+    const gastosBase =
+      mesDashboard === 'General'
+        ? gastos
+        : gastos.filter((g) => g.mes === mesDashboard);
 
-    const totalAportes = aportes.reduce((sum, a) => sum + Number(a.monto), 0);
+    const aportesBase =
+      mesDashboard === 'General'
+        ? aportes
+        : aportes.filter((a) => a.mes === mesDashboard);
+
+    const gastosPagadosFiltrados = gastosBase.filter(
+      (gasto) => gasto.pagado === true
+    );
+
+    const totalGastos = gastosBase.reduce((sum, g) => sum + Number(g.monto), 0);
+    const gastosPagados = gastosPagadosFiltrados.reduce(
+      (sum, g) => sum + Number(g.monto),
+      0
+    );
+    const totalAportes = aportesBase.reduce(
+      (sum, a) => sum + Number(a.monto),
+      0
+    );
 
     const aportesPorPersona = {
-      Jhojan: aportes
+      Jhojan: aportesBase
         .filter((a) => a.persona === 'Jhojan')
         .reduce((s, a) => s + Number(a.monto), 0),
-      'Luisa ❤️': aportes
+      'Luisa ❤️': aportesBase
         .filter((a) => a.persona === 'Luisa ❤️')
         .reduce((s, a) => s + Number(a.monto), 0)
     };
@@ -222,21 +226,10 @@ const BudgetTracker = () => {
       'Luisa ❤️': aportesPorPersona['Luisa ❤️'] - mitadGastos
     };
 
-    const gastosPorCategoria = gastos.reduce((acc, g) => {
+    const gastosPorCategoria = gastosBase.reduce((acc, g) => {
       acc[g.categoria] = (acc[g.categoria] || 0) + Number(g.monto);
       return acc;
     }, {});
-
-    // DEBUG: Verificar cálculos en consola
-    console.log('🔍 DEBUG CÁLCULOS:', {
-      totalGastos,
-      gastosPagados,
-      totalAportes,
-      totalGastosCount: gastos.length,
-      gastosPagadosCount: gastosPagadosFiltrados.length,
-      gastosNoPagadosCount: gastos.filter(g => !g.pagado).length,
-      gastosConEstado: gastos.map(g => ({ nombre: g.nombre, pagado: g.pagado }))
-    });
 
     return {
       totalGastos,
@@ -246,9 +239,19 @@ const BudgetTracker = () => {
       saldoDisponible: totalAportes - gastosPagados,
       aportesPorPersona,
       balance,
-      gastosPorCategoria
+      gastosPorCategoria,
+      numGastos: gastosBase.length,
+      numGastosPagados: gastosPagadosFiltrados.length
     };
-  }, [gastos, aportes]);
+  }, [gastos, aportes, mesDashboard]);
+
+  const porcentajePagado =
+    calculos.totalGastos > 0
+      ? (calculos.gastosPagados / calculos.totalGastos) * 100
+      : 0;
+
+  const etiquetaPeriodo =
+    mesDashboard === 'General' ? 'Todos los meses' : mesDashboard;
 
   // ================== HELPERS ==================
   const formatMoney = (num) => {
@@ -261,14 +264,16 @@ const BudgetTracker = () => {
     setTimeout(() => setMensajeExito(''), 3000);
   };
 
-  // ================== GASTOS - FUNCIONES CORREGIDAS ==================
+  // ================== GASTOS ==================
   const togglePago = useCallback((id) => {
     setGastos((prev) =>
-      prev.map((g) => 
-        g.id === id ? { 
-          ...g, 
-          pagado: !g.pagado // 🔴 TOGGLE SIMPLE Y CONSISTENTE
-        } : g
+      prev.map((g) =>
+        g.id === id
+          ? {
+              ...g,
+              pagado: !g.pagado
+            }
+          : g
       )
     );
   }, []);
@@ -280,7 +285,91 @@ const BudgetTracker = () => {
     }
   }, []);
 
-  // CREAR GASTO - CORREGIDO
+  const empezarEdicion = useCallback((gasto) => {
+    setGastoEditandoId(gasto.id);
+    setGastoEditado({
+      nombre: gasto.nombre,
+      monto: String(gasto.monto),
+      categoria: gasto.categoria,
+      mes: gasto.mes,
+      recurrente: Boolean(gasto.recurrente)
+    });
+  }, []);
+
+  const cancelarEdicion = () => {
+    setGastoEditandoId(null);
+  };
+
+  // 🔧 Opción 4: editar un recurrente actualiza todos los meses
+  const guardarEdicion = () => {
+    const montoNum = parseFloat(gastoEditado.monto);
+    if (!gastoEditado.nombre.trim()) {
+      setError('El nombre del gasto no puede estar vacío');
+      return;
+    }
+    if (isNaN(montoNum) || montoNum <= 0) {
+      setError('Ingresa un monto válido mayor a 0');
+      return;
+    }
+
+    const gastoOriginal = gastos.find((g) => g.id === gastoEditandoId);
+    if (!gastoOriginal) {
+      setError('No se encontró el gasto a editar');
+      return;
+    }
+
+    const esRecurrenteOriginal = Boolean(gastoOriginal.recurrente);
+
+    setGastos((prev) =>
+      prev.map((g) => {
+        // Si NO era recurrente originalmente, solo actualizamos este
+        if (!esRecurrenteOriginal) {
+          if (g.id !== gastoEditandoId) return g;
+
+          return {
+            ...g,
+            nombre: gastoEditado.nombre.trim(),
+            monto: montoNum,
+            categoria: gastoEditado.categoria,
+            mes: gastoEditado.mes,
+            recurrente: Boolean(gastoEditado.recurrente)
+          };
+        }
+
+        // Si era recurrente: queremos cambiar TODOS los meses del grupo
+        // Usamos nombre + categoría + recurrente como "grupo"
+        const mismoGrupo =
+          g.recurrente &&
+          g.nombre === gastoOriginal.nombre &&
+          g.categoria === gastoOriginal.categoria;
+
+        if (!mismoGrupo && g.id !== gastoEditandoId) {
+          return g;
+        }
+
+        // Para los del grupo: actualizamos nombre, monto, categoría, recurrente
+        // El MES solo se cambia en el gasto que estás editando.
+        return {
+          ...g,
+          nombre: gastoEditado.nombre.trim(),
+          monto: montoNum,
+          categoria: gastoEditado.categoria,
+          recurrente: Boolean(gastoEditado.recurrente),
+          mes: g.id === gastoEditandoId ? gastoEditado.mes : g.mes
+        };
+      })
+    );
+
+    setGastoEditandoId(null);
+    setError(null);
+    mostrarExito(
+      esRecurrenteOriginal
+        ? '✏️ Gasto recurrente actualizado en todos los meses'
+        : '✏️ Gasto actualizado'
+    );
+  };
+
+  // ⭕ Crear gasto (recurrente = se agrega en todos los meses)
   const agregarGasto = () => {
     const monto = parseFloat(nuevoGasto.monto);
     if (!nuevoGasto.nombre.trim()) {
@@ -292,18 +381,21 @@ const BudgetTracker = () => {
       return;
     }
 
-    const nuevo = {
+    const mesesParaCrear = nuevoGasto.recurrente ? meses : [nuevoGasto.mes];
+
+    const nuevosGastos = mesesParaCrear.map((mes) => ({
       id: generarIdUnico(),
       nombre: nuevoGasto.nombre.trim(),
       monto,
       categoria: nuevoGasto.categoria,
-      mes: nuevoGasto.mes,
+      mes,
       recurrente: Boolean(nuevoGasto.recurrente),
-      pagado: false, // 🔴 SIEMPRE FALSE AL CREAR
+      pagado: false,
       fechaCreacion: new Date().toISOString()
-    };
+    }));
 
-    setGastos((prev) => [nuevo, ...prev]);
+    setGastos((prev) => [...nuevosGastos, ...prev]);
+
     setNuevoGasto({
       nombre: '',
       monto: '',
@@ -313,7 +405,11 @@ const BudgetTracker = () => {
     });
     setMostrarModalGasto(false);
     setError(null);
-    mostrarExito('✅ Gasto agregado');
+    mostrarExito(
+      nuevoGasto.recurrente
+        ? '✅ Gasto recurrente agregado en todos los meses'
+        : '✅ Gasto agregado'
+    );
   };
 
   // ================== APORTES ==================
@@ -373,9 +469,7 @@ const BudgetTracker = () => {
     });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `presupuesto-${new Date()
-      .toISOString()
-      .split('T')[0]}.json`;
+    link.download = `presupuesto-${new Date().toISOString().split('T')[0]}.json`;
     link.click();
   };
 
@@ -403,14 +497,6 @@ const BudgetTracker = () => {
     Moto: 'orange'
   };
 
-  const categorias = ['Arriendo', 'Servicios', 'Transporte', 'Tarjetas', 'Mercado', 'Moto'];
-  const meses = ['Diciembre', 'Enero', 'Febrero'];
-
-  // Calcular porcentaje correctamente
-  const porcentajePagado = calculos.totalGastos > 0 
-    ? ((calculos.gastosPagados / calculos.totalGastos) * 100) 
-    : 0;
-
   // ================== LOADING ==================
   if (cargando) {
     return (
@@ -421,7 +507,7 @@ const BudgetTracker = () => {
   }
 
   return (
-    <div className={`app-container ${modoOscuro ? 'theme-dark' : 'theme-light'}`}>
+    <div className="app-container">
       {/* HEADER */}
       <div className="header">
         <div className="header-top-row">
@@ -434,9 +520,9 @@ const BudgetTracker = () => {
             {guardando && (
               <span className="saving-indicator">💾 Guardando...</span>
             )}
-            
+
             <button
-              className="theme-toggle"
+              className="btn-theme-toggle"
               onClick={() => setModoOscuro((prev) => !prev)}
             >
               {modoOscuro ? <Sun size={16} /> : <Moon size={16} />}
@@ -447,7 +533,9 @@ const BudgetTracker = () => {
 
         {/* NOTIFICACIONES */}
         <div className="notifications">
-          {mensajeExito && <div className="message-success fade-in">✅ {mensajeExito}</div>}
+          {mensajeExito && (
+            <div className="message-success fade-in">✅ {mensajeExito}</div>
+          )}
           {error && (
             <div className="message-error">
               <span>❌ {error}</span>
@@ -496,68 +584,106 @@ const BudgetTracker = () => {
       {/* ================== DASHBOARD ================== */}
       {vistaActual === 'dashboard' && (
         <>
+          {/* Filtro de periodo para el DASHBOARD */}
+          <div className="card fade-in">
+            <div className="filters">
+              <span className="filter-label">Ver periodo:</span>
+              <div className="filter-buttons">
+                {['General', ...meses].map((opcion) => (
+                  <button
+                    key={opcion}
+                    className={`filter-btn ${
+                      mesDashboard === opcion ? 'active' : ''
+                    }`}
+                    onClick={() => setMesDashboard(opcion)}
+                  >
+                    {opcion}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <div className="stats-grid">
+            {/* Total Gastos */}
             <div className="card fade-in">
               <div className="stat-item">
                 <div className="stat-header">
-                  <span className="stat-title">Total Gastos</span>
+                  <span className="stat-title">Total de gastos</span>
                   <div className="stat-icon bg-blue-500">
                     <DollarSign className="text-white" size={20} />
                   </div>
                 </div>
-                <div className="stat-value">{formatMoney(calculos.totalGastos)}</div>
-                <div className="stat-subtitle">3 meses</div>
+                <div className="stat-value">
+                  {formatMoney(calculos.totalGastos)}
+                </div>
+                <div className="stat-subtitle">
+                  Periodo: {etiquetaPeriodo}
+                </div>
               </div>
             </div>
 
+            {/* Aportes */}
             <div className="card fade-in">
               <div className="stat-item">
                 <div className="stat-header">
-                  <span className="stat-title">Total Aportado</span>
+                  <span className="stat-title">Total aportado</span>
                   <div className="stat-icon bg-green-500">
                     <TrendingUp className="text-white" size={20} />
                   </div>
                 </div>
-                <div className="stat-value">{formatMoney(calculos.totalAportes)}</div>
-                <div className="stat-subtitle">Por ambos</div>
+                <div className="stat-value">
+                  {formatMoney(calculos.totalAportes)}
+                </div>
+                <div className="stat-subtitle">
+                  Ambos aportes · {etiquetaPeriodo}
+                </div>
               </div>
             </div>
 
+            {/* Pagado */}
             <div className="card fade-in">
               <div className="stat-item">
                 <div className="stat-header">
-                  <span className="stat-title">Pagado</span>
+                  <span className="stat-title">Gastos pagados</span>
                   <div className="stat-icon bg-emerald-500">
                     <Check className="text-white" size={20} />
                   </div>
                 </div>
-                <div className="stat-value">{formatMoney(calculos.gastosPagados)}</div>
+                <div className="stat-value">
+                  {formatMoney(calculos.gastosPagados)}
+                </div>
                 <div className="stat-subtitle">
                   {calculos.totalGastos > 0 ? (
                     <>
-                      {porcentajePagado.toFixed(1)}% completado
+                      {porcentajePagado.toFixed(1)}% del periodo
                       <br />
-                      <small style={{ fontSize: '12px', opacity: 0.7 }}>
-                        {gastos.filter(g => g.pagado).length} de {gastos.length} gastos
+                      <small style={{ fontSize: '12px', opacity: 0.8 }}>
+                        {calculos.numGastosPagados} de {calculos.numGastos} gastos
                       </small>
                     </>
                   ) : (
-                    'Sin gastos registrados'
+                    'Sin gastos registrados en este periodo'
                   )}
                 </div>
               </div>
             </div>
 
+            {/* Saldo disponible */}
             <div className="card fade-in">
               <div className="stat-item">
                 <div className="stat-header">
-                  <span className="stat-title">Saldo</span>
+                  <span className="stat-title">Saldo disponible</span>
                   <div className="stat-icon bg-purple-500">
                     <PieChart className="text-white" size={20} />
                   </div>
                 </div>
-                <div className="stat-value">{formatMoney(calculos.saldoDisponible)}</div>
-                <div className="stat-subtitle">Disponible</div>
+                <div className="stat-value">
+                  {formatMoney(calculos.saldoDisponible)}
+                </div>
+                <div className="stat-subtitle">
+                  Aportes - gastos pagados · {etiquetaPeriodo}
+                </div>
               </div>
             </div>
           </div>
@@ -567,12 +693,16 @@ const BudgetTracker = () => {
             {['Jhojan', 'Luisa ❤️'].map((persona) => (
               <div key={persona} className="card fade-in">
                 <div className="balance-header">
-                  <div className={`balance-avatar ${persona === 'Jhojan' ? 'purple' : 'pink'}`}>
+                  <div
+                    className={`balance-avatar ${
+                      persona === 'Jhojan' ? 'purple' : 'pink'
+                    }`}
+                  >
                     <Users className="text-white" size={24} />
                   </div>
                   <div className="balance-info">
                     <h3>{persona}</h3>
-                    <p>Balance personal</p>
+                    <p>Balance personal · {etiquetaPeriodo}</p>
                   </div>
                 </div>
 
@@ -584,24 +714,28 @@ const BudgetTracker = () => {
                     </span>
                   </div>
                   <div className="balance-row">
-                    <span className="balance-label">Tu parte (50%):</span>
+                    <span className="balance-label">Tu 50% de gastos:</span>
                     <span className="balance-amount">
                       {formatMoney(calculos.mitadGastos || 0)}
                     </span>
                   </div>
                   <div className="balance-total">
                     <div className="balance-total-row">
-                      <span className="balance-total-label">Balance:</span>
-                      <span className={`balance-total-amount ${calculos.balance[persona] >= 0 ? 'positive' : 'negative'}`}>
+                      <span className="balance-total-label">Resultado:</span>
+                      <span
+                        className={`balance-total-amount ${
+                          calculos.balance[persona] >= 0 ? 'positive' : 'negative'
+                        }`}
+                      >
                         {formatMoney(Math.abs(calculos.balance[persona] || 0))}
                       </span>
                     </div>
                     <p className="balance-note">
                       {calculos.balance[persona] > 0
-                        ? 'Te deben este monto'
+                        ? 'Te han aportado más de lo que te corresponde'
                         : calculos.balance[persona] < 0
-                        ? 'Debes este monto'
-                        : 'Estás al día'}
+                        ? 'Te falta aportar para equilibrar'
+                        : 'Están a la par en este periodo'}
                     </p>
                   </div>
                 </div>
@@ -613,31 +747,42 @@ const BudgetTracker = () => {
           <div className="card fade-in">
             <h3>
               <PieChart size={24} />
-              Gastos por Categoría
+              Gastos por categoría
             </h3>
             <div>
-              {Object.entries(calculos.gastosPorCategoria).map(([categoria, monto]) => {
-                const porcentaje = calculos.totalGastos ? ((monto / calculos.totalGastos) * 100) : 0;
-                return (
-                  <div key={categoria} className="category-item fade-in">
-                    <div className="category-header">
-                      <div className="category-info">
-                        <div style={{ color: '#9ca3af' }}>
-                          {categoriaIcons[categoria]}
+              {Object.entries(calculos.gastosPorCategoria).map(
+                ([categoria, monto]) => {
+                  const porcentaje = calculos.totalGastos
+                    ? (monto / calculos.totalGastos) * 100
+                    : 0;
+                  return (
+                    <div key={categoria} className="category-item fade-in">
+                      <div className="category-header">
+                        <div className="category-info">
+                          <div style={{ color: '#9ca3af' }}>
+                            {categoriaIcons[categoria]}
+                          </div>
+                          <span className="category-name">{categoria}</span>
                         </div>
-                        <span className="category-name">{categoria}</span>
+                        <div className="category-amount">
+                          <div className="category-value">
+                            {formatMoney(monto)}
+                          </div>
+                          <div className="category-percentage">
+                            {porcentaje.toFixed(1)}%
+                          </div>
+                        </div>
                       </div>
-                      <div className="category-amount">
-                        <div className="category-value">{formatMoney(monto)}</div>
-                        <div className="category-percentage">{porcentaje.toFixed(1)}%</div>
+                      <div className="progress-bar">
+                        <div
+                          className="progress-fill"
+                          style={{ width: `${porcentaje}%` }}
+                        />
                       </div>
                     </div>
-                    <div className="progress-bar">
-                      <div className="progress-fill" style={{ width: `${porcentaje}%` }} />
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                }
+              )}
             </div>
           </div>
         </>
@@ -654,7 +799,9 @@ const BudgetTracker = () => {
                 {['Todos', ...meses].map((mes) => (
                   <button
                     key={mes}
-                    className={`filter-btn ${mesSeleccionado === mes ? 'active' : ''}`}
+                    className={`filter-btn ${
+                      mesSeleccionado === mes ? 'active' : ''
+                    }`}
                     onClick={() => setMesSeleccionado(mes)}
                   >
                     {mes}
@@ -662,78 +809,211 @@ const BudgetTracker = () => {
                 ))}
               </div>
               <div style={{ flex: 1 }} />
-              <button className="btn-add" onClick={() => setMostrarModalGasto(true)}>
+              <button
+                className="btn-add"
+                onClick={() => setMostrarModalGasto(true)}
+              >
                 <Plus size={18} />
                 Nuevo gasto
               </button>
             </div>
           </div>
 
-          {/* LISTA DE GASTOS - ESTADO CONSISTENTE */}
+          {/* LISTA DE GASTOS */}
           <div className="expense-list">
-            {gastosFiltrados.map((gasto) => (
-              <div className={`expense-item ${gasto.pagado ? 'paid' : ''} fade-in`} key={gasto.id}>
-                <div className="expense-info">
-                  <div className={`expense-category ${categoriaColors[gasto.categoria] || 'blue'}`} />
-                  <div className="expense-details">
-                    <h4>{gasto.nombre}</h4>
-                    <div className="expense-meta">
-                      <span>{gasto.categoria}</span>
-                      <span>•</span>
-                      <span>{gasto.mes}</span>
-                      {gasto.recurrente && (
-                        <span className="expense-recurrent">🔄 Recurrente</span>
-                      )}
+            {gastosFiltrados.map((gasto) => {
+              const enEdicion = gastoEditandoId === gasto.id;
+
+              return (
+                <div
+                  className={`expense-item ${
+                    gasto.pagado ? 'paid' : ''
+                  } fade-in`}
+                  key={gasto.id}
+                >
+                  {enEdicion ? (
+                    // 🔧 MODO EDICIÓN
+                    <div className="edit-form-grid" style={{ width: '100%' }}>
+                      <div>
+                        <label className="edit-form-label">Nombre</label>
+                        <input
+                          type="text"
+                          className="form-input"
+                          value={gastoEditado.nombre}
+                          onChange={(e) =>
+                            setGastoEditado((prev) => ({
+                              ...prev,
+                              nombre: e.target.value
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div>
+                        <label className="edit-form-label">Monto</label>
+                        <input
+                          type="number"
+                          className="form-input"
+                          value={gastoEditado.monto}
+                          onChange={(e) =>
+                            setGastoEditado((prev) => ({
+                              ...prev,
+                              monto: e.target.value
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div>
+                        <label className="edit-form-label">Categoría</label>
+                        <select
+                          className="form-input"
+                          value={gastoEditado.categoria}
+                          onChange={(e) =>
+                            setGastoEditado((prev) => ({
+                              ...prev,
+                              categoria: e.target.value
+                            }))
+                          }
+                        >
+                          {categorias.map((c) => (
+                            <option key={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="edit-form-label">Mes</label>
+                        <select
+                          className="form-input"
+                          value={gastoEditado.mes}
+                          onChange={(e) =>
+                            setGastoEditado((prev) => ({
+                              ...prev,
+                              mes: e.target.value
+                            }))
+                          }
+                        >
+                          {meses.map((m) => (
+                            <option key={m}>{m}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="edit-form-label">Recurrente</label>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={gastoEditado.recurrente}
+                            onChange={(e) =>
+                              setGastoEditado((prev) => ({
+                                ...prev,
+                                recurrente: e.target.checked
+                              }))
+                            }
+                          />
+                          <span style={{ fontSize: '0.85rem' }}>Sí</span>
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: '8px',
+                          justifyContent: 'flex-end'
+                        }}
+                      >
+                        <button
+                          className="btn-cancel"
+                          onClick={cancelarEdicion}
+                        >
+                          Cancelar
+                        </button>
+                        <button className="btn-add" onClick={guardarEdicion}>
+                          <Save size={16} />
+                          Guardar
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    // 👁️ MODO NORMAL
+                    <>
+                      <div className="expense-info">
+                        <div
+                          className={`expense-category ${
+                            categoriaColors[gasto.categoria] || 'blue'
+                          }`}
+                        />
+                        <div className="expense-details">
+                          <h4>{gasto.nombre}</h4>
+                          <div className="expense-meta">
+                            <span>{gasto.categoria}</span>
+                            <span>•</span>
+                            <span>{gasto.mes}</span>
+                            {gasto.recurrente && (
+                              <span className="expense-recurrent">
+                                🔄 Recurrente
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="expense-actions">
+                        <span className="expense-amount">
+                          {formatMoney(gasto.monto)}
+                        </span>
+
+                        <button
+                          className={
+                            gasto.pagado ? 'btn-mark-paid' : 'btn-mark-unpaid'
+                          }
+                          onClick={() => togglePago(gasto.id)}
+                        >
+                          {gasto.pagado ? (
+                            <>
+                              <Check size={14} />
+                              Pagado
+                            </>
+                          ) : (
+                            <>
+                              <X size={14} />
+                              No pagado
+                            </>
+                          )}
+                        </button>
+
+                        <button
+                          className="btn-edit"
+                          onClick={() => empezarEdicion(gasto)}
+                        >
+                          <Edit size={14} />
+                        </button>
+
+                        <button
+                          className="btn-delete"
+                          onClick={() => eliminarGasto(gasto.id)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
-
-                <div className="expense-actions">
-                  <span className="expense-amount">{formatMoney(gasto.monto)}</span>
-
-                  {/* 🔴 BOTÓN CORREGIDO - ESTADO CONSISTENTE */}
-                  <button
-                    className={gasto.pagado ? 'btn-mark-paid' : 'btn-mark-unpaid'}
-                    onClick={() => togglePago(gasto.id)}
-                    style={{
-                      backgroundColor: gasto.pagado ? '#10b981' : '#ef4444',
-                      color: 'white',
-                      border: 'none',
-                      padding: '8px 12px',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                  >
-                    {gasto.pagado ? (
-                      <>
-                        <Check size={14} />
-                        Pagado
-                      </>
-                    ) : (
-                      <>
-                        <X size={14} />
-                        No pagado
-                      </>
-                    )}
-                  </button>
-
-                  <button className="btn-edit">
-                    <Edit size={14} />
-                  </button>
-
-                  <button className="btn-delete" onClick={() => eliminarGasto(gasto.id)}>
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
 
             {gastosFiltrados.length === 0 && (
-              <div className="empty-state">No hay gastos registrados en este mes.</div>
+              <div className="empty-state">
+                No hay gastos registrados en este mes.
+              </div>
             )}
           </div>
         </>
@@ -752,7 +1032,9 @@ const BudgetTracker = () => {
               <select
                 className="form-input"
                 value={nuevoAporte.persona}
-                onChange={(e) => setNuevoAporte({ ...nuevoAporte, persona: e.target.value })}
+                onChange={(e) =>
+                  setNuevoAporte({ ...nuevoAporte, persona: e.target.value })
+                }
               >
                 <option>Jhojan</option>
                 <option>Luisa ❤️</option>
@@ -762,12 +1044,16 @@ const BudgetTracker = () => {
                 type="number"
                 placeholder="Monto"
                 value={nuevoAporte.monto}
-                onChange={(e) => setNuevoAporte({ ...nuevoAporte, monto: e.target.value })}
+                onChange={(e) =>
+                  setNuevoAporte({ ...nuevoAporte, monto: e.target.value })
+                }
               />
               <select
                 className="form-input"
                 value={nuevoAporte.mes}
-                onChange={(e) => setNuevoAporte({ ...nuevoAporte, mes: e.target.value })}
+                onChange={(e) =>
+                  setNuevoAporte({ ...nuevoAporte, mes: e.target.value })
+                }
               >
                 {meses.map((m) => (
                   <option key={m}>{m}</option>
@@ -787,7 +1073,11 @@ const BudgetTracker = () => {
               {aportes.map((a) => (
                 <div className="contribution-item fade-in" key={a.id}>
                   <div className="contribution-person">
-                    <div className={`person-avatar ${a.persona === 'Jhojan' ? 'purple' : 'pink'}`}>
+                    <div
+                      className={`person-avatar ${
+                        a.persona === 'Jhojan' ? 'purple' : 'pink'
+                      }`}
+                    >
                       <Users size={24} className="text-white" />
                     </div>
                     <div className="person-info">
@@ -796,15 +1086,22 @@ const BudgetTracker = () => {
                     </div>
                   </div>
                   <div className="contribution-actions">
-                    <span className="contribution-amount">{formatMoney(a.monto)}</span>
-                    <button className="btn-contribution-delete" onClick={() => eliminarAporte(a.id)}>
+                    <span className="contribution-amount">
+                      {formatMoney(a.monto)}
+                    </span>
+                    <button
+                      className="btn-contribution-delete"
+                      onClick={() => eliminarAporte(a.id)}
+                    >
                       <Trash2 size={16} />
                     </button>
                   </div>
                 </div>
               ))}
               {aportes.length === 0 && (
-                <div className="empty-state">No hay aportes registrados todavía.</div>
+                <div className="empty-state">
+                  No hay aportes registrados todavía.
+                </div>
               )}
             </div>
           </div>
@@ -813,11 +1110,20 @@ const BudgetTracker = () => {
 
       {/* ================== MODAL NUEVO GASTO ================== */}
       {mostrarModalGasto && (
-        <div className="modal-overlay" onClick={() => setMostrarModalGasto(false)}>
-          <div className="modal-card fade-in" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="modal-overlay"
+          onClick={() => setMostrarModalGasto(false)}
+        >
+          <div
+            className="modal-card fade-in"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-header">
               <h3>Nuevo gasto</h3>
-              <button className="modal-close" onClick={() => setMostrarModalGasto(false)}>
+              <button
+                className="modal-close"
+                onClick={() => setMostrarModalGasto(false)}
+              >
                 <X size={18} />
               </button>
             </div>
@@ -828,19 +1134,28 @@ const BudgetTracker = () => {
                   type="text"
                   placeholder="Nombre del gasto"
                   value={nuevoGasto.nombre}
-                  onChange={(e) => setNuevoGasto({ ...nuevoGasto, nombre: e.target.value })}
+                  onChange={(e) =>
+                    setNuevoGasto({ ...nuevoGasto, nombre: e.target.value })
+                  }
                   className="form-input"
                 />
                 <input
                   type="number"
                   placeholder="Monto"
                   value={nuevoGasto.monto}
-                  onChange={(e) => setNuevoGasto({ ...nuevoGasto, monto: e.target.value })}
+                  onChange={(e) =>
+                    setNuevoGasto({ ...nuevoGasto, monto: e.target.value })
+                  }
                   className="form-input"
                 />
                 <select
                   value={nuevoGasto.categoria}
-                  onChange={(e) => setNuevoGasto({ ...nuevoGasto, categoria: e.target.value })}
+                  onChange={(e) =>
+                    setNuevoGasto({
+                      ...nuevoGasto,
+                      categoria: e.target.value
+                    })
+                  }
                   className="form-input"
                 >
                   {categorias.map((c) => (
@@ -849,7 +1164,9 @@ const BudgetTracker = () => {
                 </select>
                 <select
                   value={nuevoGasto.mes}
-                  onChange={(e) => setNuevoGasto({ ...nuevoGasto, mes: e.target.value })}
+                  onChange={(e) =>
+                    setNuevoGasto({ ...nuevoGasto, mes: e.target.value })
+                  }
                   className="form-input"
                 >
                   {meses.map((m) => (
@@ -857,19 +1174,28 @@ const BudgetTracker = () => {
                   ))}
                 </select>
 
-                <label>
+                <label style={{ fontSize: '0.85rem' }}>
                   <input
                     type="checkbox"
                     checked={nuevoGasto.recurrente}
-                    onChange={(e) => setNuevoGasto({ ...nuevoGasto, recurrente: e.target.checked })}
+                    onChange={(e) =>
+                      setNuevoGasto({
+                        ...nuevoGasto,
+                        recurrente: e.target.checked
+                      })
+                    }
+                    style={{ marginRight: 6 }}
                   />
-                  Gasto recurrente
+                  Gasto recurrente (se creará en todos los meses)
                 </label>
               </div>
             </div>
 
             <div className="modal-footer">
-              <button className="btn-cancel" onClick={() => setMostrarModalGasto(false)}>
+              <button
+                className="btn-cancel"
+                onClick={() => setMostrarModalGasto(false)}
+              >
                 Cancelar
               </button>
               <button className="btn-add" onClick={agregarGasto}>
