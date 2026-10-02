@@ -26,7 +26,37 @@ import {
   Moon
 } from 'lucide-react';
 
-const API_URL = 'https://budget-api-dt5y.onrender.com/api/budget/main';
+const API_BASE_URL =
+  process.env.REACT_APP_API_URL || 'https://budget-api-dt5y.onrender.com';
+const API_URL = `${API_BASE_URL}/api/budget/main`;
+
+const NOMBRES_MESES = [
+  'Enero',
+  'Febrero',
+  'Marzo',
+  'Abril',
+  'Mayo',
+  'Junio',
+  'Julio',
+  'Agosto',
+  'Septiembre',
+  'Octubre',
+  'Noviembre',
+  'Diciembre'
+];
+
+// Cantidad de meses (incluyendo el elegido) en que se crea un gasto recurrente
+const MESES_RECURRENTES = 3;
+
+const obtenerMesActual = () => NOMBRES_MESES[new Date().getMonth()];
+
+const obtenerMesesDesde = (mes, cantidad) => {
+  const inicio = NOMBRES_MESES.indexOf(mes);
+  return Array.from(
+    { length: cantidad },
+    (_, i) => NOMBRES_MESES[(inicio + i) % NOMBRES_MESES.length]
+  );
+};
 
 // Utilidad para IDs únicos
 const generarIdUnico = () => {
@@ -48,14 +78,14 @@ const BudgetTracker = () => {
   const [nuevoAporte, setNuevoAporte] = useState({
     persona: 'Jhojan',
     monto: '',
-    mes: 'Diciembre'
+    mes: obtenerMesActual()
   });
 
   const [nuevoGasto, setNuevoGasto] = useState({
     nombre: '',
     monto: '',
     categoria: 'Arriendo',
-    mes: 'Diciembre',
+    mes: obtenerMesActual(),
     recurrente: true
   });
 
@@ -74,14 +104,22 @@ const BudgetTracker = () => {
     nombre: '',
     monto: '',
     categoria: 'Arriendo',
-    mes: 'Diciembre',
+    mes: obtenerMesActual(),
     recurrente: true
   });
 
   const timeoutRef = useRef(null);
+  const cargaFallidaRef = useRef(false);
 
-  // Lista de meses que manejas en la app
-  const meses = ['Diciembre', 'Enero', 'Febrero'];
+  // Meses con datos (más el mes actual), en orden de calendario
+  const meses = useMemo(() => {
+    const usados = new Set([
+      obtenerMesActual(),
+      ...gastos.map((g) => g.mes),
+      ...aportes.map((a) => a.mes)
+    ]);
+    return NOMBRES_MESES.filter((m) => usados.has(m));
+  }, [gastos, aportes]);
   const categorias = ['Arriendo', 'Servicios', 'Transporte', 'Tarjetas', 'Mercado', 'Moto'];
 
   // ================== TEMA CLARO / OSCURO ==================
@@ -117,9 +155,13 @@ const BudgetTracker = () => {
 
         setGastos(gastosCorregidos);
         setAportes(Array.isArray(data.aportes) ? data.aportes : []);
+        cargaFallidaRef.current = false;
       } catch (err) {
         console.error(err);
-        setError('No se pudieron cargar los datos del servidor.');
+        cargaFallidaRef.current = true;
+        setError(
+          'No se pudieron cargar los datos del servidor. Los cambios no se guardarán hasta recargar la página.'
+        );
         setGastos([]);
         setAportes([]);
       } finally {
@@ -132,7 +174,8 @@ const BudgetTracker = () => {
 
   // ================== GUARDADO AUTOMÁTICO ==================
   useEffect(() => {
-    if (cargando) return;
+    // Si la carga falló, no guardar: se sobrescribirían los datos del servidor con listas vacías
+    if (cargando || cargaFallidaRef.current) return;
 
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
@@ -369,7 +412,7 @@ const BudgetTracker = () => {
     );
   };
 
-  // ⭕ Crear gasto (recurrente = se agrega en todos los meses)
+  // ⭕ Crear gasto (recurrente = se agrega en el mes elegido y los siguientes)
   const agregarGasto = () => {
     const monto = parseFloat(nuevoGasto.monto);
     if (!nuevoGasto.nombre.trim()) {
@@ -381,7 +424,9 @@ const BudgetTracker = () => {
       return;
     }
 
-    const mesesParaCrear = nuevoGasto.recurrente ? meses : [nuevoGasto.mes];
+    const mesesParaCrear = nuevoGasto.recurrente
+      ? obtenerMesesDesde(nuevoGasto.mes, MESES_RECURRENTES)
+      : [nuevoGasto.mes];
 
     const nuevosGastos = mesesParaCrear.map((mes) => ({
       id: generarIdUnico(),
@@ -400,14 +445,14 @@ const BudgetTracker = () => {
       nombre: '',
       monto: '',
       categoria: 'Arriendo',
-      mes: 'Diciembre',
+      mes: obtenerMesActual(),
       recurrente: true
     });
     setMostrarModalGasto(false);
     setError(null);
     mostrarExito(
       nuevoGasto.recurrente
-        ? '✅ Gasto recurrente agregado en todos los meses'
+        ? `✅ Gasto recurrente agregado en ${mesesParaCrear.join(', ')}`
         : '✅ Gasto agregado'
     );
   };
@@ -431,7 +476,7 @@ const BudgetTracker = () => {
       }
     ]);
 
-    setNuevoAporte({ persona: 'Jhojan', monto: '', mes: 'Diciembre' });
+    setNuevoAporte({ persona: 'Jhojan', monto: '', mes: obtenerMesActual() });
     setError(null);
     mostrarExito('✅ Aporte agregado');
   };
@@ -513,7 +558,7 @@ const BudgetTracker = () => {
         <div className="header-top-row">
           <div>
             <h1>Control de Presupuesto Compartido</h1>
-            <p className="header-subtitle">Diciembre 2024 - Febrero 2025</p>
+            <p className="header-subtitle">Jhojan y Luisa ❤️</p>
           </div>
 
           <div className="header-status">
@@ -894,7 +939,7 @@ const BudgetTracker = () => {
                             }))
                           }
                         >
-                          {meses.map((m) => (
+                          {NOMBRES_MESES.map((m) => (
                             <option key={m}>{m}</option>
                           ))}
                         </select>
@@ -1055,7 +1100,7 @@ const BudgetTracker = () => {
                   setNuevoAporte({ ...nuevoAporte, mes: e.target.value })
                 }
               >
-                {meses.map((m) => (
+                {NOMBRES_MESES.map((m) => (
                   <option key={m}>{m}</option>
                 ))}
               </select>
@@ -1169,7 +1214,7 @@ const BudgetTracker = () => {
                   }
                   className="form-input"
                 >
-                  {meses.map((m) => (
+                  {NOMBRES_MESES.map((m) => (
                     <option key={m}>{m}</option>
                   ))}
                 </select>
@@ -1186,7 +1231,8 @@ const BudgetTracker = () => {
                     }
                     style={{ marginRight: 6 }}
                   />
-                  Gasto recurrente (se creará en todos los meses)
+                  Gasto recurrente (se creará en este mes y los {MESES_RECURRENTES - 1}{' '}
+                  siguientes)
                 </label>
               </div>
             </div>
